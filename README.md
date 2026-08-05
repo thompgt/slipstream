@@ -5,6 +5,15 @@ trail braking and smooth throttle, not a full simulator.
 
 TypeScript · Vite · Three.js · custom 2D vehicle physics · no install, static deploy.
 
+## Tech Stack
+
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Three.js](https://img.shields.io/badge/Three.js-000000?style=for-the-badge&logo=threedotjs&logoColor=white)
+![WebGL](https://img.shields.io/badge/WebGL-990000?style=for-the-badge&logo=webgl&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)
+![ESLint](https://img.shields.io/badge/ESLint-4B32C3?style=for-the-badge&logo=eslint&logoColor=white)
+
 > **Status: M0 — scaffold.** The toolchain, fixed-timestep loop, and debug overlay are in
 > place. Vehicle physics, tracks, AI, and race rules are next. See [PLAN.md](PLAN.md).
 
