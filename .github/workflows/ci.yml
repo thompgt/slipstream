@@ -1,0 +1,26 @@
+name: CI
+
+# The deploy workflow runs `npm run check`, but only on a push to main — by
+# which point a broken commit is already the deployed game. This gate runs the
+# same checks on the branch, before it merges.
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      # Typecheck, lint and tests all pass in Node. The build is the only step
+      # that exercises the Vite pipeline and the Three.js bundle, so a broken
+      # import in `render/` or `main.ts` is invisible without it.
+      - run: npm run build
