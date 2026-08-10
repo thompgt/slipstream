@@ -74,7 +74,7 @@ listed in its "may import" row.**
 
 | Module     | Responsibility                                                | May import      |
 | ---------- | ------------------------------------------------------------- | --------------- |
-| `core/`    | Fixed-timestep loop, `World` state container, event bus, math | — (nothing)     |
+| `core/`    | Fixed-timestep loop, `World` state container, event bus, math, input feel | — (nothing) |
 | `physics/` | Bicycle model, tyre curve, integration, collision response    | `core`          |
 | `track/`   | Spline → mesh, surface queries, distance-along-track          | `core`          |
 | `input/`   | Keyboard + gamepad → normalised `InputState`                  | `core`          |
@@ -88,6 +88,12 @@ listed in its "may import" row.**
 **`physics/` importing Three.js is a bug.** It uses plain `{x, z}` vectors and pure
 functions. That's what makes it testable in Node and is the main reason the module boundary
 exists at all.
+
+**Tuning constants belong to the module they describe, not to the car.** Input ramp rates
+live in `core/feel.ts` and camera tuning in `render/cameraSetup.ts`, because bundling them
+into `physics/carSetup.ts` is what made `input/` and `render/` import `physics/` — the
+table above was quietly violated for exactly one evening's convenience. If a constant makes
+a module import upward, it is in the wrong file.
 
 ---
 
@@ -167,11 +173,14 @@ slipstream/
     │   ├── loop.test.ts
     │   ├── world.ts            # World type + factory
     │   ├── events.ts           # typed event bus
+    │   ├── feel.ts             # ← input ramp rates. Not the car.
     │   └── math.ts             # lerp, clamp, vec2 helpers
     ├── physics/
     │   ├── car.ts              # bicycle model step
     │   ├── tyre.ts             # slip curve
-    │   └── constants.ts        # ← the tuning file. One place.
+    │   ├── gearbox.ts · weightTransfer.ts
+    │   ├── regression.test.ts  # ← the frozen handling envelope
+    │   └── carSetup.ts         # ← the car's tuning file. One place.
     ├── track/
     │   ├── spline.ts · builder.ts · query.ts
     ├── input/

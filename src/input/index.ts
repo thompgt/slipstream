@@ -19,8 +19,8 @@
  * there. Rate-limiting a stick on top of that just adds lag.
  */
 
+import { inputFeel, type InputFeel } from '../core/feel'
 import { createInputState, type InputState } from '../core/world'
-import { carSetup, type CarSetup } from '../physics/carSetup'
 
 export interface InputSampler {
   /**
@@ -63,7 +63,7 @@ const applyDeadzone = (value: number, deadzone: number): number => {
 
 export function createInputSampler(
   target: Window = window,
-  setup: CarSetup = carSetup,
+  feel: InputFeel = inputFeel,
 ): InputSampler {
   const held = new Set<string>()
   const state = createInputState()
@@ -96,7 +96,6 @@ export function createInputSampler(
 
   return {
     sample(dtSeconds, speed) {
-      const { steering } = setup
       const pad = readPad()
 
       let padSteer = 0
@@ -105,7 +104,7 @@ export function createInputSampler(
       let padHandbrake = false
 
       if (pad) {
-        padSteer = applyDeadzone(pad.axes[PAD.steerAxis] ?? 0, steering.deadzone)
+        padSteer = applyDeadzone(pad.axes[PAD.steerAxis] ?? 0, feel.deadzone)
         padThrottle = pad.buttons[PAD.throttleButton]?.value ?? 0
         padBrake = pad.buttons[PAD.brakeButton]?.value ?? 0
         padHandbrake = pad.buttons[PAD.handbrakeButton]?.pressed ?? false
@@ -126,15 +125,15 @@ export function createInputSampler(
 
       const targetSteer = (anyHeld(KEYS.right) ? 1 : 0) - (anyHeld(KEYS.left) ? 1 : 0)
 
-      const speedFactor = Math.min(speed / steering.falloffSpeed, 1)
-      const outRate = steering.rate + (steering.rateAtSpeed - steering.rate) * speedFactor
+      const speedFactor = Math.min(speed / feel.fullRateSpeed, 1)
+      const outRate = feel.rate + (feel.rateAtSpeed - feel.rate) * speedFactor
       // Unwinding — including steering through centre to opposite lock — always
       // uses the fast rate.
       const unwinding = targetSteer === 0 || Math.sign(targetSteer) !== Math.sign(state.steer)
-      const rate = unwinding ? steering.returnRate : outRate
+      const rate = unwinding ? feel.returnRate : outRate
       state.steer = moveToward(state.steer, targetSteer, rate * dtSeconds)
 
-      const pedalStep = steering.pedalRate * dtSeconds
+      const pedalStep = feel.pedalRate * dtSeconds
       state.throttle = moveToward(state.throttle, anyHeld(KEYS.throttle) ? 1 : 0, pedalStep)
       state.brake = moveToward(state.brake, anyHeld(KEYS.brake) ? 1 : 0, pedalStep)
       state.handbrake = anyHeld(KEYS.handbrake)

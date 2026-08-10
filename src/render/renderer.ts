@@ -16,7 +16,7 @@
 import * as THREE from 'three'
 import { lerp, lerpAngle } from '../core/math'
 import type { World } from '../core/world'
-import { carSetup, type CarSetup } from '../physics/carSetup'
+import { cameraSetup, type CameraSetup } from './cameraSetup'
 
 export interface Renderer {
   /** @param alpha 0..1 interpolation between the previous and current physics state. */
@@ -29,7 +29,7 @@ const GRID_SIZE = 400
 const GRID_DIVISIONS = 80
 const GRID_SPACING = GRID_SIZE / GRID_DIVISIONS
 
-export function createRenderer(canvasParent: HTMLElement, setup: CarSetup = carSetup): Renderer {
+export function createRenderer(canvasParent: HTMLElement, tuning: CameraSetup = cameraSetup): Renderer {
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
   // Cap at 2: retina laptops otherwise render 4x the pixels for little gain, and
   // Safari's WebGL driver is where the 60fps budget is tightest.
@@ -42,7 +42,7 @@ export function createRenderer(canvasParent: HTMLElement, setup: CarSetup = carS
   scene.fog = new THREE.Fog(0x0b0d10, 70, 240)
 
   const camera = new THREE.PerspectiveCamera(
-    setup.camera.baseFov,
+    tuning.baseFov,
     window.innerWidth / window.innerHeight,
     0.1,
     600,
@@ -101,7 +101,7 @@ export function createRenderer(canvasParent: HTMLElement, setup: CarSetup = carS
         ground.position.x = grid.position.x
         ground.position.z = grid.position.z
 
-        const cam = setup.camera
+        const cam = tuning
         const forwardX = Math.sin(heading)
         const forwardZ = Math.cos(heading)
 

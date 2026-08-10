@@ -128,33 +128,6 @@ export interface CarSetup {
     highSpeedFactor: number
     /** Speed, m/s, at which the high-speed factor is fully applied. */
     falloffSpeed: number
-    /** Keyboard steer ramp toward full lock at a standstill, units/s. */
-    rate: number
-    /** Keyboard steer ramp at `falloffSpeed` — deliberately slower. */
-    rateAtSpeed: number
-    /** Ramp back to centre, units/s. Faster than the ramp out, so catching a slide works. */
-    returnRate: number
-    /** Keyboard throttle/brake ramp, units/s. */
-    pedalRate: number
-    /** Gamepad stick deadzone. */
-    deadzone: number
-  }
-
-  camera: {
-    /** Metres behind the car. */
-    distance: number
-    /** Metres above the car. */
-    height: number
-    /** Look-at point, metres ahead of the car. */
-    lookAhead: number
-    /** Position spring, 1/s. Higher = stiffer. Too stiff reads as "no speed". */
-    stiffness: number
-    /** FOV at a standstill, degrees. */
-    baseFov: number
-    /** Degrees added at `fovSpeed`. */
-    fovGain: number
-    /** Speed, m/s, at which the full FOV gain is applied. */
-    fovSpeed: number
   }
 }
 
@@ -232,20 +205,5 @@ export const carSetup: CarSetup = {
     maxAngle: 0.42,
     highSpeedFactor: 0.35,
     falloffSpeed: 70,
-    rate: 3.4,
-    rateAtSpeed: 1.3,
-    returnRate: 5.5,
-    pedalRate: 6,
-    deadzone: 0.12,
-  },
-
-  camera: {
-    distance: 9.5,
-    height: 3.6,
-    lookAhead: 8,
-    stiffness: 6,
-    baseFov: 62,
-    fovGain: 16,
-    fovSpeed: 80,
   },
 }

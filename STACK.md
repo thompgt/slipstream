@@ -162,6 +162,8 @@ surprise.
 | Testing   | Vitest on logic             | Deploy ships something broken → add Playwright smoke test |
 | Deploy    | GitHub Pages                | Want preview URLs → Cloudflare/Netlify                    |
 
-**Total runtime dependencies: one.** Three.js. Everything else is build-time. That's
-deliberate — for a solo four-week project, every dependency is a thing that can break at
+**Runtime dependencies: two.** Three.js, plus `lil-gui` for the live tuning panel — and
+that one is behind a dynamic `import()`, so it ships as its own chunk that a player who
+never presses `T` never downloads. Everything else is build-time. Keeping this list
+short is deliberate: for a solo project, every dependency is a thing that can break at
 11pm on a Tuesday.

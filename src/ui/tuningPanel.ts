@@ -11,7 +11,9 @@
  * the difference on the same lap, not reloading between guesses.
  */
 
+import type { InputFeel } from '../core/feel'
 import type { CarSetup } from '../physics/carSetup'
+import type { CameraSetup } from '../render/cameraSetup'
 
 export interface TuningPanel {
   toggle: () => void
@@ -20,8 +22,20 @@ export interface TuningPanel {
 
 const noop: TuningPanel = { toggle: () => {}, dispose: () => {} }
 
+/**
+ * The panel is the one place that legitimately spans the module table, because
+ * it is a dev tool that tunes all three: the car, how it is driven, and how it
+ * is watched. It only ever imports *types* plus the live objects handed to it,
+ * so no simulation code gains a dependency from it existing.
+ */
+export interface TuningTargets {
+  setup: CarSetup
+  feel: InputFeel
+  camera: CameraSetup
+}
+
 export async function createTuningPanel(
-  setup: CarSetup,
+  { setup, feel, camera }: TuningTargets,
   onReset: () => void,
 ): Promise<TuningPanel> {
   // Panel is optional; the game must still run if the chunk fails to load.
@@ -75,24 +89,28 @@ export async function createTuningPanel(
   })
   ratios.close()
 
-  const steering = gui.addFolder('Steering feel')
+  const steering = gui.addFolder('Steering')
   steering.add(setup.steering, 'maxAngle', 0.1, 0.9, 0.01).name('max lock (rad)')
   steering.add(setup.steering, 'highSpeedFactor', 0.05, 1, 0.01).name('lock at speed')
   steering.add(setup.steering, 'falloffSpeed', 20, 120, 1).name('fall-off speed (m/s)')
-  steering.add(setup.steering, 'rate', 0.5, 10, 0.1).name('keyboard rate')
-  steering.add(setup.steering, 'rateAtSpeed', 0.2, 6, 0.1).name('keyboard rate at speed')
-  steering.add(setup.steering, 'returnRate', 0.5, 12, 0.1).name('return rate')
-  steering.add(setup.steering, 'pedalRate', 1, 20, 0.5).name('pedal rate')
-  steering.add(setup.steering, 'deadzone', 0, 0.4, 0.01).name('gamepad deadzone')
 
-  const camera = gui.addFolder('Camera')
-  camera.add(setup.camera, 'distance', 3, 20, 0.1)
-  camera.add(setup.camera, 'height', 0.5, 10, 0.1)
-  camera.add(setup.camera, 'lookAhead', 0, 25, 0.5).name('look ahead')
-  camera.add(setup.camera, 'stiffness', 1, 25, 0.1).name('spring stiffness')
-  camera.add(setup.camera, 'baseFov', 40, 100, 1).name('base FOV')
-  camera.add(setup.camera, 'fovGain', 0, 40, 1).name('FOV gain')
-  camera.close()
+  const feelFolder = gui.addFolder('Input feel')
+  feelFolder.add(feel, 'rate', 0.5, 10, 0.1).name('keyboard rate')
+  feelFolder.add(feel, 'rateAtSpeed', 0.2, 6, 0.1).name('keyboard rate at speed')
+  feelFolder.add(feel, 'fullRateSpeed', 20, 120, 1).name('full-rate speed (m/s)')
+  feelFolder.add(feel, 'returnRate', 0.5, 12, 0.1).name('return rate')
+  feelFolder.add(feel, 'pedalRate', 1, 20, 0.5).name('pedal rate')
+  feelFolder.add(feel, 'deadzone', 0, 0.4, 0.01).name('gamepad deadzone')
+  feelFolder.close()
+
+  const cameraFolder = gui.addFolder('Camera')
+  cameraFolder.add(camera, 'distance', 3, 20, 0.1)
+  cameraFolder.add(camera, 'height', 0.5, 10, 0.1)
+  cameraFolder.add(camera, 'lookAhead', 0, 25, 0.5).name('look ahead')
+  cameraFolder.add(camera, 'stiffness', 1, 25, 0.1).name('spring stiffness')
+  cameraFolder.add(camera, 'baseFov', 40, 100, 1).name('base FOV')
+  cameraFolder.add(camera, 'fovGain', 0, 40, 1).name('FOV gain')
+  cameraFolder.close()
 
   gui.add({ reset: onReset }, 'reset').name('Reset car (R)')
 

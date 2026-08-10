@@ -6,12 +6,14 @@
  * (ARCHITECTURE.md).
  */
 
+import { inputFeel } from './core/feel'
 import { createLoop, FIXED_DT } from './core/loop'
 import { createWorld, createCar } from './core/world'
 import { createInputSampler } from './input'
 import { resetCar, stepCar } from './physics/car'
 import { carSetup } from './physics/carSetup'
 import { peakSlipAngle } from './physics/tyre'
+import { cameraSetup } from './render/cameraSetup'
 import { createRenderer } from './render/renderer'
 import { createDebugOverlay } from './ui/debugOverlay'
 import { createTuningPanel } from './ui/tuningPanel'
@@ -23,8 +25,8 @@ const world = createWorld()
 const player = createCar(0, true)
 world.cars.push(player)
 
-const input = createInputSampler(window, carSetup)
-const renderer = createRenderer(document.body, carSetup)
+const input = createInputSampler(window)
+const renderer = createRenderer(document.body)
 const overlay = createDebugOverlay(debugElement)
 
 const degrees = (radians: number): string => `${((radians * 180) / Math.PI).toFixed(1)}°`
@@ -70,7 +72,9 @@ const loop = createLoop({
 window.addEventListener('resize', renderer.resize)
 
 // The panel is a lazily-loaded dev chunk; the game runs whether or not it arrives.
-const panel = createTuningPanel(carSetup, () => resetCar(player))
+const panel = createTuningPanel({ setup: carSetup, feel: inputFeel, camera: cameraSetup }, () =>
+  resetCar(player),
+)
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return
