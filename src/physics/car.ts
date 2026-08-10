@@ -29,10 +29,12 @@ import { clamp } from '../core/math'
 import type { Car } from '../core/world'
 import { carSetup, type CarSetup } from './carSetup'
 import { engineTorque, totalRatio, updateGearbox } from './gearbox'
+import { createWheelLoads, FL, FR, RL, RR, wheelLoads } from './suspension'
 import { tyreForce } from './tyre'
-import { axleLoads, type AxleLoads } from './weightTransfer'
+import type { AxleLoads } from './weightTransfer'
 
-/** Scratch, reused every step for every car — see the note in `weightTransfer`. */
+/** Scratch, reused every step for every car — see the note in `suspension`. */
+const wheels = createWheelLoads()
 const loads: AxleLoads = { front: 0, rear: 0 }
 
 /**
@@ -90,7 +92,14 @@ export function stepCar(car: Car, dt: number, setup: CarSetup = carSetup): void 
   if (reversing) driveForce = -brakes.reverseForce * brake
 
   // --- 3. weight transfer ------------------------------------------------------
-  axleLoads(car.longitudinalAccel, speed, setup, loads)
+  // Solved per wheel, then summed back to axles for the tyre model below, which
+  // is still per axle. The sum is exactly what the old per-axle solve produced,
+  // because lateral transfer is antisymmetric within an axle — so this step
+  // changes nothing today. It is the scaffolding the per-wheel tyre model needs,
+  // and doing it first means the migration can be verified rather than felt.
+  wheelLoads(car.longitudinalAccel, car.lateralAccel, speed, setup, wheels)
+  loads.front = wheels[FL] + wheels[FR]
+  loads.rear = wheels[RL] + wheels[RR]
 
   // --- 4. friction ellipse -----------------------------------------------------
   const gripFront = loads.front * tyres.peakGripFront
@@ -147,8 +156,9 @@ export function stepCar(car: Car, dt: number, setup: CarSetup = carSetup): void 
   const accelY = forceY / chassis.mass
 
   // Weight transfer responds to tyre and aero forces, not to the rotating-frame
-  // terms below, so record the force-derived value.
+  // terms below, so record the force-derived values.
   car.longitudinalAccel = accelX
+  car.lateralAccel = accelY
 
   // `v*r` and `-u*r` are the rotating-frame terms: in a steady corner they are
   // the centripetal acceleration. Dropping them is a common bug that makes the
@@ -219,6 +229,7 @@ export function resetCar(car: Car): void {
   car.rpm = 0
   car.shiftTimer = 0
   car.longitudinalAccel = 0
+  car.lateralAccel = 0
 }
 
 interface TelemetryInput {

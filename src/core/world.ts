@@ -112,6 +112,15 @@ export interface Car {
    */
   longitudinalAccel: number
 
+  /**
+   * Body-frame lateral acceleration, m/s^2, rightward, from the previous step.
+   *
+   * Same one-step feedback as `longitudinalAccel`, for the same reason: load
+   * transfer depends on acceleration and acceleration depends on load. 16ms of
+   * lag at 60Hz, in exchange for a closed-form step.
+   */
+  lateralAccel: number
+
   telemetry: CarTelemetry
 
   lap: number
@@ -134,6 +143,7 @@ export function createCar(id: number, isPlayer = false): Car {
     rpm: 0,
     shiftTimer: 0,
     longitudinalAccel: 0,
+    lateralAccel: 0,
     telemetry: createTelemetry(),
     lap: 0,
     distanceAlongTrack: 0,

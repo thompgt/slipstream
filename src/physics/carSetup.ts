@@ -38,6 +38,42 @@ export interface TyreSetup {
   handbrakeGrip: number
 }
 
+/**
+ * Springs, bars, and the geometry that decides how load moves side to side.
+ *
+ * The single most useful thing in here is the *ratio* of the two anti-roll bar
+ * rates. It decides how the car's lateral load transfer is split between the
+ * axles, and because tyre grip is sub-linear in load (`TyreSetup.loadSensitivity`),
+ * the axle taking more of the transfer loses more total grip. That is the
+ * mechanism behind the oldest setup lever in motorsport: stiffen the front bar
+ * to add understeer, stiffen the rear to add oversteer. Nothing scripts it.
+ *
+ * Rates are wheel rates, already through the motion ratio — modelling rockers
+ * and pushrods would be a lot of trigonometry to arrive back at one number.
+ */
+export interface SuspensionSetup {
+  /** Wheel rate, N/m. F1 is very stiff: ~200 N/mm. */
+  springRateFront: number
+  springRateRear: number
+  /**
+   * Anti-roll bar rates, Nm/rad, added to the roll stiffness each axle gets
+   * from its springs.
+   */
+  antiRollFront: number
+  antiRollRear: number
+  /**
+   * Roll centre heights, m. The lateral force reacts partly through the
+   * suspension links at this height (instantly, causing no roll) and partly
+   * through the springs above it (causing roll). Low roll centres are why F1
+   * cars transfer load smoothly rather than jacking up on their outside wheels.
+   */
+  rollCentreFront: number
+  rollCentreRear: number
+  /** Track widths, m — the lever arm lateral transfer acts over. */
+  trackFront: number
+  trackRear: number
+}
+
 export interface CarSetup {
   chassis: {
     /** kg */
@@ -106,6 +142,8 @@ export interface CarSetup {
     /** Force applied when reversing off the brake pedal at a standstill, N. */
     reverseForce: number
   }
+
+  suspension: SuspensionSetup
 
   tyres: TyreSetup
 
@@ -180,6 +218,20 @@ export const carSetup: CarSetup = {
     biasFront: 0.62,
     handbrakeForce: 9000,
     reverseForce: 3000,
+  },
+
+  suspension: {
+    springRateFront: 200000,
+    springRateRear: 180000,
+    // Roughly a third of the roll stiffness the springs already provide. Their
+    // ratio starts near the static weight split so the car is balanced before
+    // anyone touches it.
+    antiRollFront: 90000,
+    antiRollRear: 78000,
+    rollCentreFront: 0.035,
+    rollCentreRear: 0.055,
+    trackFront: 1.62,
+    trackRear: 1.58,
   },
 
   tyres: {
