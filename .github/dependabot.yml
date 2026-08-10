@@ -1,0 +1,20 @@
+version: 2
+
+# Two runtime dependencies and a build toolchain, on a project worked in
+# evenings. Monthly is the right cadence: often enough that a security advisory
+# does not sit for a quarter, rare enough that the repo does not become a PR
+# queue. Dev dependencies are grouped so a toolchain bump is one review.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
