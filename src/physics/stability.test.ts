@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest'
 import { FIXED_DT } from '../core/loop'
 import { createCar, type Car } from '../core/world'
-import { stepCar } from './car'
+import { resetCar, stepCar } from './car'
 import { carSetup } from './carSetup'
 
 /**
@@ -158,6 +158,35 @@ describe('stability across the input space', () => {
     }
 
     expect(failure ?? 'sane').toBe('sane')
+  })
+})
+
+describe('resetCar', () => {
+  it('clears the telemetry along with the state it describes', () => {
+    // The NaN path returns from `stepCar` before `writeTelemetry`, so stale
+    // telemetry after a reset reads as a hung game rather than a reset car.
+    const car = createCar(0, true)
+    Object.assign(car.input, { throttle: 1, steer: 0.2 })
+    for (let i = 0; i < 300; i++) stepCar(car, FIXED_DT, carSetup)
+    expect(car.telemetry.speed).toBeGreaterThan(10)
+    expect(car.telemetry.loadFront).toBeGreaterThan(0)
+
+    resetCar(car)
+
+    expect(car.telemetry.speed).toBe(0)
+    expect(car.telemetry.loadFront).toBe(0)
+    expect(car.telemetry.lateralG).toBe(0)
+  })
+
+  it('clears lap progress, so a reset cannot become a phantom lap', () => {
+    const car = createCar(0, true)
+    car.lap = 2
+    car.distanceAlongTrack = 3000
+
+    resetCar(car)
+
+    expect(car.lap).toBe(0)
+    expect(car.distanceAlongTrack).toBe(0)
   })
 })
 

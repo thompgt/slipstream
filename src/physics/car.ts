@@ -26,7 +26,7 @@
  */
 
 import { clamp } from '../core/math'
-import type { Car } from '../core/world'
+import { createTelemetry, type Car } from '../core/world'
 import { carSetup, type CarSetup } from './carSetup'
 import { engineTorque, totalRatio, updateGearbox } from './gearbox'
 import { createWheelLoads, FL, FR, RL, RR, wheelLoads } from './suspension'
@@ -220,7 +220,18 @@ export function stepCar(car: Car, dt: number, setup: CarSetup = carSetup): void 
   })
 }
 
-/** Put a car back on its feet after a NaN, or on request. */
+/**
+ * Put a car back on its feet after a NaN, or on request.
+ *
+ * Telemetry is cleared along with the state it describes. The NaN path returns
+ * from `stepCar` before `writeTelemetry`, so without this the overlay would sit
+ * frozen on the numbers from the step that poisoned the car — which reads as the
+ * game having hung rather than as a car that reset.
+ *
+ * Lap and distance go too: R teleports the car to the origin, and leaving it
+ * carrying half a lap of progress is how a reset turns into a phantom lap once
+ * `game/` starts believing those fields.
+ */
 export function resetCar(car: Car): void {
   car.position.x = 0
   car.position.z = 0
@@ -236,6 +247,11 @@ export function resetCar(car: Car): void {
   car.shiftTimer = 0
   car.longitudinalAccel = 0
   car.lateralAccel = 0
+  car.lap = 0
+  car.distanceAlongTrack = 0
+  // Off the hot path — only a NaN or a keypress gets here — so rebuilding from
+  // the factory is worth it to keep this from drifting as fields are added.
+  Object.assign(car.telemetry, createTelemetry())
 }
 
 interface TelemetryInput {
