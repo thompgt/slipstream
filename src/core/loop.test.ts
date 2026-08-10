@@ -95,6 +95,23 @@ describe('createLoop', () => {
     expect(loop.simTime).toBeLessThanOrEqual(MAX_FRAME_DELTA)
   })
 
+  it('ignores a negative frame delta rather than banking negative time', () => {
+    // `start()` seeds `lastTime` from `now()`, but the first frame carries the
+    // rAF timestamp of a frame that may already have begun — so delta one can be
+    // negative. Unclamped, that drives alpha below zero and the renderer
+    // extrapolates backwards past the previous physics state.
+    const h = harness()
+    const alphas: number[] = []
+    const loop = createLoop({ step: () => {}, render: (a) => alphas.push(a) }, h.env)
+
+    loop.start()
+    h.advance(-8)
+    h.advance(FIXED_DT / 2)
+
+    expect(loop.simTime).toBe(0)
+    for (const alpha of alphas) expect(alpha).toBeGreaterThanOrEqual(0)
+  })
+
   it('reports an interpolation alpha in [0, 1)', () => {
     const h = harness()
     const alphas: number[] = []

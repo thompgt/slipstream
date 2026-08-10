@@ -85,8 +85,13 @@ export function createLoop(
     const rawDelta = time - lastTime
     lastTime = time
 
-    // Clamp before accumulating — see MAX_FRAME_DELTA.
-    const frameDelta = Math.min(rawDelta, MAX_FRAME_DELTA)
+    // Clamp before accumulating — see MAX_FRAME_DELTA. The lower bound is not
+    // paranoia: `start()` seeds `lastTime` from `now()`, while the first frame
+    // is stamped with the rAF timestamp of a frame that may already have begun,
+    // so the very first delta can be negative. Left unclamped it banks negative
+    // time, and the accumulator produces an alpha below zero — the renderer then
+    // extrapolates backwards past the previous physics state.
+    const frameDelta = Math.max(0, Math.min(rawDelta, MAX_FRAME_DELTA))
     accumulator += frameDelta
 
     let steps = 0
