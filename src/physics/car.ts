@@ -30,7 +30,7 @@ import type { Car } from '../core/world'
 import { carSetup, type CarSetup } from './carSetup'
 import { engineTorque, totalRatio, updateGearbox } from './gearbox'
 import { createWheelLoads, FL, FR, RL, RR, wheelLoads } from './suspension'
-import { tyreForce } from './tyre'
+import { axleGrip, tyreForce } from './tyre'
 import type { AxleLoads } from './weightTransfer'
 
 /** Scratch, reused every step for every car — see the note in `suspension`. */
@@ -102,8 +102,14 @@ export function stepCar(car: Car, dt: number, setup: CarSetup = carSetup): void 
   loads.rear = wheels[RL] + wheels[RR]
 
   // --- 4. friction ellipse -----------------------------------------------------
-  const gripFront = loads.front * tyres.peakGripFront
-  const gripRear = loads.rear * tyres.peakGripRear * (handbrake ? tyres.handbrakeGrip : 1)
+  // Grip is summed from the two wheels of each axle rather than taken from the
+  // axle total. Identical while `loadSensitivity` is zero; once it is not, an
+  // axle with its load piled onto one wheel has less grip than one carrying the
+  // same total evenly, which is what makes bar rates and roll centres matter.
+  const gripFront = axleGrip(wheels[FL], wheels[FR], tyres.peakGripFront, tyres)
+  const gripRear =
+    axleGrip(wheels[RL], wheels[RR], tyres.peakGripRear, tyres) *
+    (handbrake ? tyres.handbrakeGrip : 1)
 
   // Direction of travel, for forces that oppose motion. Zeroed near a standstill
   // so brakes and rolling resistance don't buzz the car back and forth.

@@ -36,6 +36,25 @@ export interface TyreSetup {
   peakGripRear: number
   /** Rear grip multiplier while the handbrake is pulled. */
   handbrakeGrip: number
+
+  /**
+   * How much the friction coefficient falls as a tyre is loaded up.
+   *
+   *   mu = peakGrip * (1 - loadSensitivity * (Fz / nominalLoad - 1))
+   *
+   * Real tyres are sub-linear in load: doubling the vertical load on a tyre
+   * gives less than double the grip. That single fact is what makes lateral
+   * weight transfer *cost* an axle grip rather than merely rearrange it, and
+   * therefore what makes anti-roll bars, roll centres, and a lifted inside wheel
+   * mean anything at all.
+   *
+   * At 0 the four-wheel load model is invisible and the car behaves exactly like
+   * the per-axle bicycle model — which is how the migration was verified. Real
+   * slicks are around 0.15-0.30.
+   */
+  loadSensitivity: number
+  /** Load, N, at which mu is exactly `peakGrip`. Set near the static corner load. */
+  nominalLoad: number
 }
 
 /**
@@ -242,9 +261,26 @@ export const carSetup: CarSetup = {
     stiffness: 11,
     shape: 1.6,
     curvature: 0.4,
-    peakGripFront: 1.55,
-    peakGripRear: 1.62,
+    // Raised 8% from the values the per-axle model was tuned with. Load
+    // sensitivity costs the car grip everywhere it matters — cornering loads are
+    // well above `nominalLoad` once downforce arrives — so peak grip was
+    // re-solved to put the car back on its measured envelope rather than
+    // accepting a slower one. That calibration is why the regression bands did
+    // not have to move.
+    peakGripFront: 1.674,
+    peakGripRear: 1.75,
     handbrakeGrip: 0.45,
+    /**
+     * Conservative on purpose. Real slicks sit nearer 0.15-0.30, but the rest of
+     * the model is not yet ready to absorb that: with per-axle tyre forces and
+     * instant load transfer, a strong value makes the car snap at the limit
+     * rather than slide. Raise it as per-wheel slip and suspension lag land.
+     */
+    loadSensitivity: 0.08,
+    // Static load on one corner, ~1815N, rounded — so `peakGrip` keeps its plain
+    // meaning of "grip at rest", and load sensitivity only takes grip away as
+    // downforce and weight transfer pile on.
+    nominalLoad: 1800,
   },
 
   aero: {

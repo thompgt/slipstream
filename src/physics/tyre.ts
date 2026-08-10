@@ -41,6 +41,48 @@ export function tyreForce(slipAngle: number, tyre: TyreSetup): number {
 }
 
 /**
+ * Friction coefficient for a tyre carrying `load` newtons.
+ *
+ * Falls as the tyre is loaded up, because rubber is sub-linear in load — a tyre
+ * at twice the vertical load makes less than twice the grip. Everything
+ * interesting about four-wheel setup follows from this one curve being bent
+ * rather than straight.
+ *
+ * Floored well above zero: at extreme loads the linear fall-off would eventually
+ * predict negative friction, which is nonsense, and the floor is far outside the
+ * range a car on a track ever reaches.
+ */
+export function gripCoefficient(load: number, peakGrip: number, tyre: TyreSetup): number {
+  const excess = load / tyre.nominalLoad - 1
+  return peakGrip * Math.max(0.25, 1 - tyre.loadSensitivity * excess)
+}
+
+/**
+ * Peak lateral force an axle can make, N, given the load on each of its wheels.
+ *
+ * Summed per wheel rather than computed from the axle total, which is the whole
+ * point: with `loadSensitivity` above zero, an axle with 5kN on one wheel and
+ * 1kN on the other has *less* grip than one with 3kN on each, even though both
+ * carry 6kN. Moving load across an axle costs it grip.
+ *
+ * That is the mechanism behind the oldest setup lever there is. Stiffening the
+ * front bar sends more of the car's lateral transfer to the front axle, so the
+ * front loses more grip than the rear, so the car understeers. Nothing anywhere
+ * scripts understeer; it falls out of this sum.
+ */
+export function axleGrip(
+  loadLeft: number,
+  loadRight: number,
+  peakGrip: number,
+  tyre: TyreSetup,
+): number {
+  return (
+    loadLeft * gripCoefficient(loadLeft, peakGrip, tyre) +
+    loadRight * gripCoefficient(loadRight, peakGrip, tyre)
+  )
+}
+
+/**
  * Slip angle, in radians, at which the curve peaks.
  *
  * Telemetry uses it to show how far past the limit an axle is, and M4's AI will
