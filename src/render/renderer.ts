@@ -6,17 +6,20 @@
  * what the fixed timestep exists to prevent. The camera state below is the one
  * exception, and it is render-local: nothing in the sim can observe it.
  *
- * There is no track yet, so the ground is an infinite-feeling grid: a finite
- * plane that snaps along with the car in whole grid squares. Reference lines
- * matter more than they sound like they should — on a featureless plane you
- * cannot see yaw, and a car that is sliding beautifully looks like it is
- * driving straight.
+ * Given a track, the ground is the circuit. Without one it falls back to an
+ * infinite-feeling grid: a finite plane that snaps along with the car in whole
+ * grid squares. That fallback is not dead code — it is what `npm run dev` shows
+ * while a circuit is being changed, and reference lines matter more than they
+ * sound like they should. On a featureless plane you cannot see yaw, and a car
+ * that is sliding beautifully looks like it is driving straight.
  */
 
 import * as THREE from 'three'
 import { lerp, lerpAngle } from '../core/math'
 import type { World } from '../core/world'
+import type { TrackData } from '../track/spline'
 import { cameraSetup, type CameraSetup } from './cameraSetup'
+import { buildTrackMesh, trackBounds } from './trackMesh'
 
 export interface Renderer {
   /** @param alpha 0..1 interpolation between the previous and current physics state. */
@@ -25,11 +28,20 @@ export interface Renderer {
   dispose: () => void
 }
 
+export interface RendererOptions {
+  /** The circuit to draw. Without one, the grid fallback is used. */
+  track?: TrackData
+  tuning?: CameraSetup
+}
+
 const GRID_SIZE = 400
 const GRID_DIVISIONS = 80
 const GRID_SPACING = GRID_SIZE / GRID_DIVISIONS
 
-export function createRenderer(canvasParent: HTMLElement, tuning: CameraSetup = cameraSetup): Renderer {
+export function createRenderer(canvasParent: HTMLElement, options: RendererOptions = {}): Renderer {
+  const { track } = options
+  const tuning = options.tuning ?? cameraSetup
+
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
   // Cap at 2: retina laptops otherwise render 4x the pixels for little gain, and
   // Safari's WebGL driver is where the 60fps budget is tightest.
@@ -39,13 +51,17 @@ export function createRenderer(canvasParent: HTMLElement, tuning: CameraSetup = 
 
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(0x0b0d10)
-  scene.fog = new THREE.Fog(0x0b0d10, 70, 240)
+  // Further with a circuit under you: braking references you cannot see until
+  // 240m out are references you brake too late for.
+  scene.fog = new THREE.Fog(0x0b0d10, 120, track ? 900 : 240)
 
+  // The far plane has to sit beyond the fog, or the circuit is clipped away
+  // while still visible — a hard edge sweeping down the main straight.
   const camera = new THREE.PerspectiveCamera(
     tuning.baseFov,
     window.innerWidth / window.innerHeight,
     0.1,
-    600,
+    track ? 1400 : 600,
   )
 
   scene.add(new THREE.HemisphereLight(0x9fc4e8, 0x1b2029, 1.6))
@@ -53,16 +69,30 @@ export function createRenderer(canvasParent: HTMLElement, tuning: CameraSetup = 
   sun.position.set(30, 50, 20)
   scene.add(sun)
 
+  // Terrain: a plane that covers the whole circuit when there is one, or a
+  // moving patch under the car when there is not.
+  const bounds = track ? trackBounds(track) : null
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(GRID_SIZE * 3, GRID_SIZE * 3),
-    new THREE.MeshStandardMaterial({ color: 0x1c2129, roughness: 0.95 }),
+    new THREE.PlaneGeometry(
+      bounds ? bounds.size : GRID_SIZE * 3,
+      bounds ? bounds.size : GRID_SIZE * 3,
+    ),
+    new THREE.MeshStandardMaterial({ color: track ? 0x23331d : 0x1c2129, roughness: 0.95 }),
   )
   ground.rotation.x = -Math.PI / 2
+  // Below the run-off, so the terrain never z-fights the circuit it surrounds.
+  ground.position.y = -0.15
+  if (bounds) ground.position.set(bounds.centreX, -0.15, bounds.centreZ)
   scene.add(ground)
 
   const grid = new THREE.GridHelper(GRID_SIZE, GRID_DIVISIONS, 0x35414f, 0x252d38)
   grid.position.y = 0.01
-  scene.add(grid)
+  // The kerbs and the white lines are the reference now, and a grid over the
+  // top of them reads as a debug overlay nobody asked for.
+  if (!track) scene.add(grid)
+
+  const trackMesh = track ? buildTrackMesh(track) : null
+  if (trackMesh) scene.add(trackMesh)
 
   const car = buildCar()
   scene.add(car)
@@ -94,22 +124,20 @@ export function createRenderer(canvasParent: HTMLElement, tuning: CameraSetup = 
         // which is exactly the forward vector the physics uses.
         car.rotation.y = heading
 
-        // Snap the grid in whole squares so the reference lines never appear to
-        // slide under the car, which would read as the car standing still.
-        grid.position.x = Math.round(x / GRID_SPACING) * GRID_SPACING
-        grid.position.z = Math.round(z / GRID_SPACING) * GRID_SPACING
-        ground.position.x = grid.position.x
-        ground.position.z = grid.position.z
+        if (!track) {
+          // Snap the grid in whole squares so the reference lines never appear
+          // to slide under the car, which would read as the car standing still.
+          grid.position.x = Math.round(x / GRID_SPACING) * GRID_SPACING
+          grid.position.z = Math.round(z / GRID_SPACING) * GRID_SPACING
+          ground.position.x = grid.position.x
+          ground.position.z = grid.position.z
+        }
 
         const cam = tuning
         const forwardX = Math.sin(heading)
         const forwardZ = Math.cos(heading)
 
-        cameraTarget.set(
-          x - forwardX * cam.distance,
-          cam.height,
-          z - forwardZ * cam.distance,
-        )
+        cameraTarget.set(x - forwardX * cam.distance, cam.height, z - forwardZ * cam.distance)
         lookTarget.set(x + forwardX * cam.lookAhead, 0.8, z + forwardZ * cam.lookAhead)
 
         const now = performance.now()
@@ -144,6 +172,12 @@ export function createRenderer(canvasParent: HTMLElement, tuning: CameraSetup = 
     },
     resize,
     dispose() {
+      // The circuit is the one large allocation here — a few megabytes of
+      // buffers that the GPU keeps until it is told otherwise.
+      if (trackMesh) {
+        trackMesh.geometry.dispose()
+        ;(trackMesh.material as THREE.Material).dispose()
+      }
       renderer.dispose()
       renderer.domElement.remove()
     },
