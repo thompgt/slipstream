@@ -7,7 +7,7 @@
  */
 
 import { inputFeel } from './core/feel'
-import { createLoop, FIXED_DT } from './core/loop'
+import { createLoop } from './core/loop'
 import { createWorld, createCar } from './core/world'
 import { createInputSampler } from './input'
 import { resetCar, stepCar } from './physics/car'
@@ -16,7 +16,7 @@ import { peakSlipAngle } from './physics/tyre'
 import { cameraSetup } from './render/cameraSetup'
 import { createRenderer } from './render/renderer'
 import { createDebugOverlay } from './ui/debugOverlay'
-import { createTuningPanel } from './ui/tuningPanel'
+import { createTuningPanel, type TuningPanel } from './ui/tuningPanel'
 
 const debugElement = document.getElementById('debug')
 if (!debugElement) throw new Error('#debug element missing from index.html')
@@ -71,21 +71,35 @@ const loop = createLoop({
 
 window.addEventListener('resize', renderer.resize)
 
-// The panel is a lazily-loaded dev chunk; the game runs whether or not it arrives.
-const panel = createTuningPanel({ setup: carSetup, feel: inputFeel, camera: cameraSetup }, () =>
-  resetCar(player),
-)
+/**
+ * The tuning panel is a dev chunk, imported on the first `T` rather than at
+ * startup.
+ *
+ * STACK.md counts `lil-gui` as a runtime dependency "a player who never presses
+ * T never downloads" — which was only true of the `import()` inside the panel,
+ * not of the call site. Constructing it eagerly requested the chunk on every
+ * page load and put the whole GUI on screen before anyone asked for it, so `T`
+ * hid the panel rather than opening it, as the README says it should.
+ */
+let panel: Promise<TuningPanel> | null = null
+const toggleTuningPanel = (): void => {
+  panel ??= createTuningPanel({ setup: carSetup, feel: inputFeel, camera: cameraSetup }, () =>
+    resetCar(player),
+  )
+  void panel.then((p) => p.toggle())
+}
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return
   if (e.code === 'Backquote') overlay.toggle()
   if (e.code === 'KeyR') resetCar(player)
-  if (e.code === 'KeyT') void panel.then((p) => p.toggle())
+  if (e.code === 'KeyT') toggleTuningPanel()
 })
 
-// Physics owns the clock, so a car spawned mid-frame still starts from a known
-// pose rather than whatever the previous step left behind.
+// A known pose before the first frame is drawn. Deliberately no priming
+// `stepCar` here: the loop owns the clock, and a step outside it advanced the
+// car without advancing `world.time` — 16ms of simulation the game's only clock
+// never saw, which is precisely the drift the fixed timestep exists to prevent.
 resetCar(player)
-stepCar(player, FIXED_DT, carSetup)
 
 loop.start()

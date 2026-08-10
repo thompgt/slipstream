@@ -43,7 +43,11 @@ export async function createTuningPanel(
   if (!module) return noop
 
   const gui = new module.default({ title: 'Slipstream — car setup', width: 320 })
+  // Built hidden: `main.ts` constructs the panel on the first `T` and toggles it
+  // in the same breath, so starting shown would make that press a no-op and the
+  // second press the one that opens it.
   gui.close()
+  gui.show(false)
 
   const grip = gui.addFolder('Tyres — grip and slide')
   grip.add(setup.tyres, 'peakGripFront', 0.6, 2.5, 0.01).name('peak grip front')
@@ -114,7 +118,7 @@ export async function createTuningPanel(
 
   gui.add({ reset: onReset }, 'reset').name('Reset car (R)')
 
-  let hidden = false
+  let hidden = true
   return {
     toggle() {
       hidden = !hidden
