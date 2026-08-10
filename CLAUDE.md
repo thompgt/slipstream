@@ -1,7 +1,62 @@
 # Slipstream
 
-Browser F1-style arcade-sim racer. TypeScript + Vite + Three.js, deployed static.
+Browser F1 **simulator**. TypeScript + Vite + Three.js, deployed static.
 Design docs: `PLAN.md` (milestones), `ARCHITECTURE.md` (detail), `STACK.md` (choices).
+
+## Direction: simulation, not arcade
+
+**This is the single most important thing to know before changing anything.**
+
+The project began as an arcade-sim and the early commits reflect that. It is not
+that any more. The target is a modern Codemasters-style F1 game — the look, the feel,
+and the weight of a real Formula 1 car — and the one place it should beat those games
+is damage, which they model far too forgivingly.
+
+When a decision is between "reads well immediately" and "behaves like the real thing",
+choose the real thing. Anything that exists purely to flatter the player is wrong here.
+
+### What that means visually
+
+The current build looks like a prototype: flat lighting, untextured boxes, a wireframe
+grid, one hardcoded red car. Everything below is the direction to move in, not a
+description of what exists.
+
+- **Photographic, not stylised.** Physically-based materials, real-world albedo values,
+  an sRGB/ACES tone-mapped pipeline, correct exposure. No flat-shaded primaries, no
+  neon, no cel shading, no fantasy skies.
+- **Light like a broadcast.** Sun angle and colour temperature belong to a real time of
+  day at a real circuit. Soft shadows under the cars, ambient occlusion in the cockpit
+  and around bodywork, sharp speculars off carbon and paint.
+- **Real proportions.** A 2026 car is ~5.6m long, ~2.0m wide, ~0.97m tall on 18-inch
+  wheels. Track width, kerb height, barrier height, run-off distances, marshal post and
+  bridge spacing are all real dimensions, not eyeballed.
+- **The trackside sells the speed.** Kerbs, white lines, sponsor boards, tyre stacks,
+  catch fencing, grandstands, trees. An empty ribbon of tarmac reads as slow no matter
+  how fast the car is going.
+- **Motion and camera are broadcast-grade.** Chase, T-cam and cockpit views matching
+  real camera positions; subtle shake that scales with kerb and impact; speed-dependent
+  FOV; motion blur and heat haze where there is budget for them.
+- **Damage is visible.** Wings that bend and detach, scarred bodywork, punctures that
+  deflate, sparks off the plank, debris that stays on track. If the physics models a
+  failure, the player must be able to see it.
+
+### What that means in feel
+
+- Weight and inertia — the car should feel like 800kg, never like a go-kart.
+- No hidden assists. Understeer, oversteer, snap, and lockup emerge from the model.
+- Tyres, fuel, brakes and damage all degrade, and the player should feel it happening.
+- Assists exist for accessibility and are explicit, off by default, and shown in the UI.
+
+### The tension to respect
+
+`PLAN.md` and `STACK.md` were written under an arcade-sim brief and a 50-hour budget,
+and some of their reasoning no longer applies — the four-wheel physics model already
+supersedes the "2D bicycle model" they describe. Where those docs conflict with this
+section, **this section wins**, but say so explicitly in the commit rather than leaving
+the contradiction for someone to trip over.
+
+The performance budget below is the one thing that does not bend. Simulation quality
+that drops the game under 60fps is not a win.
 
 ## Commands
 
@@ -20,7 +75,7 @@ Enforced by dependency direction — a module may import only from its "may impo
 | Module     | Responsibility                            | May import      |
 | ---------- | ----------------------------------------- | --------------- |
 | `core/`    | loop, `World`, event bus, math, input feel | nothing        |
-| `physics/` | bicycle model, tyres, integration         | `core`          |
+| `physics/` | vehicle model, tyres, suspension, damage  | `core`          |
 | `track/`   | spline → mesh, surface + distance queries | `core`          |
 | `input/`   | keyboard/gamepad → `InputState`           | `core`          |
 | `ai/`      | racing line → `InputState`                | `core`, `track` |

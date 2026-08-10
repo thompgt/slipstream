@@ -1,9 +1,9 @@
 # Slipstream
 
-An F1-style arcade-sim racer that runs in the browser. Grippy but slidey — rewarding
-trail braking and smooth throttle, not a full simulator.
+A Formula 1 simulator that runs in the browser. Four-wheel vehicle physics, real
+circuits, and the component damage model the big F1 games never quite commit to.
 
-TypeScript · Vite · Three.js · custom 2D vehicle physics · no install, static deploy.
+TypeScript · Vite · Three.js · custom vehicle physics · no install, static deploy.
 
 ## Tech Stack
 

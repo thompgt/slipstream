@@ -99,6 +99,21 @@ export interface TrackOptions {
   spacing?: number
   /** Sector boundaries as fractions of a lap. Defaults to even thirds. */
   sectorFractions?: [number, number]
+  /**
+   * Scale the whole circuit so the lap comes out this long, m.
+   *
+   * Authoring a layout to hit an exact lap length by hand is a losing game: the
+   * corner angles are fixed by what the circuit *is*, and two of the straights
+   * are already spoken for by the requirement that the lap close. Adjusting the
+   * rest to also hit a target length means solving three constraints with
+   * numbers that each have a right answer for other reasons.
+   *
+   * Scaling is the honest way out. Shape and closure are preserved exactly, and
+   * corner radii scale with everything else — which is fine, because they were
+   * approximations of a real corner in the first place. Widths are left alone,
+   * since a track that is 7% shorter is not 7% narrower.
+   */
+  targetLength?: number
 }
 
 const DEFAULT_SPACING = 2
@@ -134,6 +149,22 @@ const lerp = (a: number, b: number, t: number): number => a + (b - a) * t
 export function buildTrack(nodes: TrackNode[], options: TrackOptions): TrackData {
   if (nodes.length < 4) {
     throw new Error(`A circuit needs at least 4 nodes to spline; "${options.name}" has ${nodes.length}`)
+  }
+
+  // Measure once at the authored scale, then rebuild at the scale that hits the
+  // target. One extra pass at load, and it keeps circuit files written in the
+  // units their corners are actually remembered in.
+  if (options.targetLength !== undefined) {
+    const { targetLength, ...rest } = options
+    const rough = buildTrack(nodes, rest)
+    const scale = targetLength / rough.length
+    const scaled = nodes.map((node) => ({
+      ...node,
+      x: node.x * scale,
+      z: node.z * scale,
+      ...(node.y === undefined ? {} : { y: node.y * scale }),
+    }))
+    return buildTrack(scaled, rest)
   }
 
   const spacing = options.spacing ?? DEFAULT_SPACING
