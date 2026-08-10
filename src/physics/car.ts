@@ -29,9 +29,8 @@ import { clamp } from '../core/math'
 import { createTelemetry, type Car } from '../core/world'
 import { carSetup, type CarSetup } from './carSetup'
 import { engineTorque, totalRatio, updateGearbox } from './gearbox'
-import { createWheelLoads, FL, FR, RL, RR, wheelLoads } from './suspension'
+import { createWheelLoads, FL, FR, RL, RR, wheelLoads, type AxleLoads } from './suspension'
 import { axleGrip, tyreForce } from './tyre'
-import type { AxleLoads } from './weightTransfer'
 
 /** Scratch, reused every step for every car — see the note in `suspension`. */
 const wheels = createWheelLoads()
