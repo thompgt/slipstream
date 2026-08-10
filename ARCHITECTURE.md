@@ -69,21 +69,33 @@ different car.
 
 ## Modules
 
-Boundaries are enforced by dependency direction. **A module may only import from modules
-listed in its "may import" row.**
+Boundaries are enforced by dependency direction, and the rule is checked rather than
+remembered: `eslint.config.js` encodes this table as `no-restricted-imports` zones, so a
+crossing fails `npm run lint`. **A module may only import from modules listed in its "may
+import" row.**
 
-| Module     | Responsibility                                                | May import      |
-| ---------- | ------------------------------------------------------------- | --------------- |
-| `core/`    | Fixed-timestep loop, `World` state container, event bus, math, input feel | — (nothing) |
-| `physics/` | Bicycle model, tyre curve, integration, collision response    | `core`          |
-| `track/`   | Spline → mesh, surface queries, distance-along-track          | `core`          |
-| `input/`   | Keyboard + gamepad → normalised `InputState`                  | `core`          |
-| `ai/`      | Racing line following → `InputState`                          | `core`, `track` |
-| `game/`    | Race rules, laps, positions, flags, state machine             | `core`, `track` |
-| `render/`  | Three.js scene, meshes, chase camera, interpolation           | `core`, `track` |
-| `ui/`      | HUD, menus, debug overlay (DOM, not canvas)                   | `core`          |
-| `audio/`   | Web Audio graph, engine synthesis, event sounds               | `core`          |
-| `assets/`  | Track JSON, models, loaders, tuning constants                 | `core`          |
+| Module     | Responsibility                                                            | May import      |
+| ---------- | ------------------------------------------------------------------------- | --------------- |
+| `core/`    | Fixed-timestep loop, `World` state container, event bus, math, input feel | — (nothing)     |
+| `physics/` | Tyre curve, per-wheel load, drivetrain, integration                       | `core`          |
+| `track/`   | Circuit authoring, spline sampling, surface and distance queries          | `core`          |
+| `input/`   | Keyboard + gamepad → normalised `InputState`                              | `core`          |
+| `ai/`      | Racing line following → `InputState`                                      | `core`, `track` |
+| `game/`    | Race rules, laps, positions, flags, state machine                         | `core`, `track` |
+| `render/`  | Three.js scene, meshes, chase camera, interpolation                       | `core`, `track` |
+| `ui/`      | HUD, menus, debug overlay (DOM, not canvas)                               | `core`          |
+| `audio/`   | Web Audio graph, engine synthesis, event sounds                           | `core`          |
+
+Collision response and car-to-car contact are not yet written; when they land they belong
+in `physics/`. There is no `assets/` module: circuits are authored in TypeScript under
+`track/circuits/` rather than loaded as data, which is what lets the closure of a layout be
+a unit test instead of a runtime surprise.
+
+**The one sanctioned exception** is `ui/tuningPanel.ts`, a dev-only lazy chunk that tunes
+the car, the input feel and the camera at once. It imports _types_ from `physics/` and
+`render/` and is handed the live objects, so nothing on the simulation path gains a
+dependency from it existing. The lint rule allows type-only imports out of `ui/` for
+exactly this reason.
 
 **`physics/` importing Three.js is a bug.** It uses plain `{x, z}` vectors and pure
 functions. That's what makes it testable in Node and is the main reason the module boundary
@@ -137,9 +149,16 @@ interface World {
   time: number // accumulated simulation time, ms — the only clock
   cars: Car[] // pose, velocity, per-wheel state
   race: RaceState // phase, lap counts, positions
-  track: TrackData | null
+  track: null // ← TrackData, once the pipeline is wired in
 }
 ```
+
+`track` is typed `null` today rather than `TrackData | null`, and that is the one place the
+module table bites: `core/` imports nothing, so it cannot name a type that lives in
+`track/`. Wiring the circuit into the world means either moving the track types down into
+`core/` or handing the track to the systems that need it rather than parking it on `World`.
+That decision is open, and it is the last step between a tested track pipeline and a
+circuit you can drive.
 
 **Mutable and plain, by design.** A 60Hz simulation touching every car's state each step is
 precisely the workload immutable state management is worst at — allocating fresh objects
@@ -158,14 +177,18 @@ subscribe. This keeps `physics/` from importing `audio/`.
 
 ## Folder structure
 
+What exists today. Modules still to be filled in (`ai/`, `game/`, `audio/`) hold a single
+documented placeholder each rather than a speculative file list — the shape they will take
+is described in the module table above, and inventing filenames here ages badly.
+
 ```
 slipstream/
 ├── index.html
 ├── vite.config.ts
 ├── tsconfig.json
-├── eslint.config.js
+├── eslint.config.js           # ← the module table below, enforced
 ├── PLAN.md · ARCHITECTURE.md · STACK.md · CLAUDE.md
-├── .github/workflows/deploy.yml
+├── .github/workflows/ci.yml · deploy.yml
 └── src/
     ├── main.ts                 # composition root — wires modules, owns nothing
     ├── core/
@@ -176,27 +199,27 @@ slipstream/
     │   ├── feel.ts             # ← input ramp rates. Not the car.
     │   └── math.ts             # lerp, clamp, vec2 helpers
     ├── physics/
-    │   ├── car.ts              # bicycle model step
-    │   ├── tyre.ts             # slip curve
-    │   ├── gearbox.ts · weightTransfer.ts
+    │   ├── car.ts              # the step: steering, drivetrain, ellipse, integrate
+    │   ├── tyre.ts             # slip curve, load sensitivity, axle grip
+    │   ├── suspension.ts       # vertical load per wheel, roll
+    │   ├── gearbox.ts          # torque curve + shift logic
     │   ├── regression.test.ts  # ← the frozen handling envelope
+    │   ├── stability.test.ts   # ← it must never explode, and must be deterministic
     │   └── carSetup.ts         # ← the car's tuning file. One place.
     ├── track/
-    │   ├── spline.ts · builder.ts · query.ts
+    │   ├── author.ts           # circuits as straights and arcs
+    │   ├── spline.ts           # → evenly-sampled centreline
+    │   ├── query.ts            # position → distance, offset, surface. O(1).
+    │   └── circuits/monza.ts
     ├── input/
-    │   ├── keyboard.ts · gamepad.ts · index.ts   # → InputState
-    ├── ai/
-    │   ├── driver.ts · racingLine.ts
-    ├── game/
-    │   ├── race.ts · laps.ts · positions.ts
+    │   └── index.ts            # keyboard + gamepad → InputState
+    ├── ai/driver.ts            # placeholder — M4
+    ├── game/race.ts            # placeholder — M3, M5
+    ├── audio/engine.ts         # placeholder — M6
     ├── render/
-    │   ├── renderer.ts · camera.ts · scene.ts
-    ├── ui/
-    │   ├── debugOverlay.ts · hud.ts
-    ├── audio/
-    │   ├── engine.ts · index.ts
-    └── assets/
-        └── circuits/
+    │   ├── renderer.ts · cameraSetup.ts
+    └── ui/
+        └── debugOverlay.ts · tuningPanel.ts
 ```
 
 ---
