@@ -71,18 +71,20 @@ that drops the game under 60fps is not a win.
 ## Module boundaries
 
 Enforced by dependency direction — a module may import only from its "may import" list.
+`eslint.config.js` encodes this table, so a crossing fails `npm run lint` rather than
+waiting for a reviewer to notice.
 
-| Module     | Responsibility                            | May import      |
-| ---------- | ----------------------------------------- | --------------- |
-| `core/`    | loop, `World`, event bus, math, input feel | nothing        |
-| `physics/` | vehicle model, tyres, suspension, damage  | `core`          |
-| `track/`   | spline → mesh, surface + distance queries | `core`          |
-| `input/`   | keyboard/gamepad → `InputState`           | `core`          |
-| `ai/`      | racing line → `InputState`                | `core`, `track` |
-| `game/`    | race rules, laps, positions               | `core`, `track` |
-| `render/`  | Three.js scene, chase camera              | `core`, `track` |
-| `ui/`      | HUD, debug overlay (DOM)                  | `core` + types  |
-| `audio/`   | Web Audio graph                           | `core`          |
+| Module     | Responsibility                             | May import      |
+| ---------- | ------------------------------------------ | --------------- |
+| `core/`    | loop, `World`, event bus, math, input feel | nothing         |
+| `physics/` | vehicle model, tyres, suspension, damage   | `core`          |
+| `track/`   | spline → mesh, surface + distance queries  | `core`          |
+| `input/`   | keyboard/gamepad → `InputState`            | `core`          |
+| `ai/`      | racing line → `InputState`                 | `core`, `track` |
+| `game/`    | race rules, laps, positions                | `core`, `track` |
+| `render/`  | Three.js scene, chase camera               | `core`, `track` |
+| `ui/`      | HUD, debug overlay (DOM)                   | `core` + types  |
+| `audio/`   | Web Audio graph                            | `core`          |
 
 `src/main.ts` is the composition root and the only file that sees the whole graph.
 

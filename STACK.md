@@ -52,9 +52,16 @@ Tree-shakes to ~150KB gzipped when importing only what's used.
 > mental-model tax with no upside here — there's no component tree to manage, just a scene
 > updated imperatively every frame.
 
-## Physics — hand-rolled 2D bicycle model
+## Physics — hand-rolled, 2D
 
 **The most important choice in the stack, and the least obvious.**
+
+> **Where this has moved since it was written.** The reasoning below is unchanged and still
+> load-bearing — hand-rolled beats a solver here, for the four reasons given. What has moved
+> is "bicycle model": vertical load is now solved per wheel (`physics/suspension.ts`), which
+> is why anti-roll bars and roll centres are real setup levers. Tyre forces are still
+> evaluated per axle. See the direction note in CLAUDE.md, which wins where these docs
+> disagree.
 
 A rigid-body engine (Rapier, Cannon, Ammo) simulates a car as a chassis with four wheel
 constraints and solves the whole system generically. That's the right call for a
@@ -151,16 +158,16 @@ surprise.
 
 ## Summary
 
-| Area      | Choice                      | Switch when                                               |
-| --------- | --------------------------- | --------------------------------------------------------- |
-| Language  | TypeScript (strict)         | Types cost more than they save → JS + JSDoc               |
-| Build     | Vite                        | Want zero config → Parcel                                 |
-| Rendering | Three.js                    | Want a built-in inspector → Babylon.js                    |
-| Physics   | Custom 2D bicycle model     | Moving toward true sim → Rapier                           |
-| State     | Mutable `World` + event bus | UI state grows past ~5 screens → Zustand (UI only)        |
-| Audio     | Web Audio synthesis         | Engine note won't sound right → Howler + samples          |
-| Testing   | Vitest on logic             | Deploy ships something broken → add Playwright smoke test |
-| Deploy    | GitHub Pages                | Want preview URLs → Cloudflare/Netlify                    |
+| Area      | Choice                          | Switch when                                               |
+| --------- | ------------------------------- | --------------------------------------------------------- |
+| Language  | TypeScript (strict)             | Types cost more than they save → JS + JSDoc               |
+| Build     | Vite                            | Want zero config → Parcel                                 |
+| Rendering | Three.js                        | Want a built-in inspector → Babylon.js                    |
+| Physics   | Custom 2D model, per-wheel load | Moving toward true sim → Rapier                           |
+| State     | Mutable `World` + event bus     | UI state grows past ~5 screens → Zustand (UI only)        |
+| Audio     | Web Audio synthesis             | Engine note won't sound right → Howler + samples          |
+| Testing   | Vitest on logic                 | Deploy ships something broken → add Playwright smoke test |
+| Deploy    | GitHub Pages                    | Want preview URLs → Cloudflare/Netlify                    |
 
 **Runtime dependencies: two.** Three.js, plus `lil-gui` for the live tuning panel — and
 that one is behind a dynamic `import()`, so it ships as its own chunk that a player who
