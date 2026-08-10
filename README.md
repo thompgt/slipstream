@@ -14,8 +14,12 @@ TypeScript · Vite · Three.js · custom 2D vehicle physics · no install, stati
 ![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)
 ![ESLint](https://img.shields.io/badge/ESLint-4B32C3?style=for-the-badge&logo=eslint&logoColor=white)
 
-> **Status: M0 — scaffold.** The toolchain, fixed-timestep loop, and debug overlay are in
-> place. Vehicle physics, tracks, AI, and race rules are next. See [PLAN.md](PLAN.md).
+> **Status: M1 — the car.** A 2D bicycle model with a Pacejka tyre curve, per-axle
+> friction ellipse, weight transfer, aero, and an 8-speed gearbox. You can provoke a
+> slide and catch it, and trail braking rotates the car. Tracks, AI, and race rules are
+> next. See [PLAN.md](PLAN.md).
+
+Play it: **<https://thompgt.github.io/slipstream/>**
 
 ## Quick start
 
@@ -24,8 +28,10 @@ npm install
 npm run dev
 ```
 
-Then open the printed URL. Drive with **WASD** or the **arrow keys**; **`** toggles the
-debug overlay.
+Then open the printed URL. Drive with **WASD** or the **arrow keys**, **space** for the
+handbrake, or plug in a gamepad. **`** toggles the telemetry overlay, **R** resets the
+car, and **T** opens the live tuning panel — every slider changes the car on the next
+physics step.
 
 ## Commands
 
