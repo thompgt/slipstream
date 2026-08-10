@@ -38,6 +38,20 @@ export const RR = 3
 export const createWheelLoads = (): WheelLoads => [0, 0, 0, 0]
 
 /**
+ * The four wheel loads summed back to two axles.
+ *
+ * The tyre model is still per axle, so `car.ts` folds the wheels back together
+ * each step. The type lives here rather than in the retired per-axle solve it
+ * used to belong to.
+ */
+export interface AxleLoads {
+  /** Newtons on the front axle. */
+  front: number
+  /** Newtons on the rear axle. */
+  rear: number
+}
+
+/**
  * Roll stiffness of one axle, Nm/rad: its bar plus what its springs already
  * contribute. Two springs a track width apart resist roll with `k·t²/2`.
  */

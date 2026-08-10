@@ -11,12 +11,49 @@ import {
   rollAxisHeight,
   wheelLoads,
 } from './suspension'
-import { axleLoads } from './weightTransfer'
 
 const setup: CarSetup = carSetup
 const weight = setup.chassis.mass * GRAVITY
 
 const clone = (): CarSetup => structuredClone(setup)
+
+/**
+ * The per-axle solve the four-wheel model replaced, written out here rather than
+ * imported.
+ *
+ * `physics/weightTransfer.ts` existed only to be this oracle once the car
+ * stopped calling it — a retired model sitting in `src/` alongside live code,
+ * where it reads as something the game uses. Spelling the formula out in the
+ * test that needs it keeps the migration contract asserted against an
+ * independent expression, which is what an oracle is for, and leaves nothing in
+ * the shipped bundle that nothing calls.
+ */
+const axleOracle = (
+  longitudinalAccel: number,
+  speed: number,
+  s: CarSetup,
+): { front: number; rear: number } => {
+  const w = s.chassis.mass * GRAVITY
+  const staticFront = w * s.chassis.frontWeightBias
+  const transfer = (s.chassis.mass * longitudinalAccel * s.chassis.cgHeight) / s.chassis.wheelbase
+  const downforce = s.aero.downforce * speed * speed
+
+  return {
+    front: Math.max(0, staticFront - transfer + downforce * s.aero.balanceFront),
+    rear: Math.max(0, w - staticFront + transfer + downforce * (1 - s.aero.balanceFront)),
+  }
+}
+
+/** The live model's axle totals — what `car.ts` actually feeds the tyres. */
+const axles = (
+  longitudinalAccel: number,
+  lateralAccel: number,
+  speed: number,
+  s: CarSetup = setup,
+): { front: number; rear: number } => {
+  const l = wheelLoads(longitudinalAccel, lateralAccel, speed, s, createWheelLoads())
+  return { front: l[FL] + l[FR], rear: l[RL] + l[RR] }
+}
 
 describe('wheelLoads — agreement with the per-axle model it replaces', () => {
   /**
@@ -34,10 +71,10 @@ describe('wheelLoads — agreement with the per-axle model it replaces', () => {
       for (const lateral of [-25, -10, 0, 10, 25]) {
         for (const speed of [0, 30, 60, 90]) {
           wheelLoads(longitudinal, lateral, speed, setup, out)
-          const axles = axleLoads(longitudinal, speed, setup)
+          const expected = axleOracle(longitudinal, speed, setup)
 
-          expect(out[FL] + out[FR]).toBeCloseTo(axles.front, 6)
-          expect(out[RL] + out[RR]).toBeCloseTo(axles.rear, 6)
+          expect(out[FL] + out[FR]).toBeCloseTo(expected.front, 6)
+          expect(out[RL] + out[RR]).toBeCloseTo(expected.rear, 6)
         }
       }
     }
@@ -50,6 +87,76 @@ describe('wheelLoads — agreement with the per-axle model it replaces', () => {
     expect(loads[FL]).toBeCloseTo(loads[FR], 9)
     expect(loads[RL]).toBeCloseTo(loads[RR], 9)
     expect(loads[FL] + loads[FR] + loads[RL] + loads[RR]).toBeCloseTo(weight, 6)
+  })
+})
+
+/**
+ * Properties of the longitudinal and aero terms, asserted against the live
+ * four-wheel model.
+ *
+ * These were previously only asserted against the retired per-axle solve, so
+ * they held for the model the car had stopped using and reached the real one
+ * only by way of the equality contract above.
+ */
+describe('longitudinal transfer and aero', () => {
+  it('carries exactly the car’s weight when static, split by the bias', () => {
+    const loads = axles(0, 0, 0)
+    expect(loads.front).toBeCloseTo(weight * setup.chassis.frontWeightBias, 6)
+    expect(loads.front + loads.rear).toBeCloseTo(weight, 6)
+  })
+
+  it('conserves total load — transfer moves it, it does not create it', () => {
+    for (const accel of [-30, -12, -1, 0, 1, 12, 30]) {
+      expect(axles(accel, 0, 0).front + axles(accel, 0, 0).rear).toBeCloseTo(weight, 6)
+    }
+  })
+
+  it('loads the front under braking — this is what gives the car turn-in bite', () => {
+    const braking = axles(-12, 0, 0)
+    const coasting = axles(0, 0, 0)
+    expect(braking.front).toBeGreaterThan(coasting.front)
+    expect(braking.rear).toBeLessThan(coasting.rear)
+  })
+
+  it('loads the rear under acceleration', () => {
+    const accelerating = axles(12, 0, 0)
+    const coasting = axles(0, 0, 0)
+    expect(accelerating.rear).toBeGreaterThan(coasting.rear)
+    expect(accelerating.front).toBeLessThan(coasting.front)
+  })
+
+  it('transfers more with a higher centre of gravity, and less over a longer wheelbase', () => {
+    const low = clone()
+    low.chassis.cgHeight = 0.2
+    const high = clone()
+    high.chassis.cgHeight = 0.6
+    expect(axles(-12, 0, 0, high).front).toBeGreaterThan(axles(-12, 0, 0, low).front)
+
+    const short = clone()
+    short.chassis.wheelbase = 2.4
+    const long = clone()
+    long.chassis.wheelbase = 4.4
+    expect(axles(-12, 0, 0, long).front).toBeLessThan(axles(-12, 0, 0, short).front)
+  })
+
+  it('scales downforce with the square of speed', () => {
+    const slow = axles(0, 0, 25)
+    const fast = axles(0, 0, 50)
+    expect(fast.front + fast.rear - weight).toBeCloseTo((slow.front + slow.rear - weight) * 4, 4)
+  })
+
+  it('splits downforce by the aero balance', () => {
+    const loads = axles(0, 0, 60)
+    const extraFront = loads.front - weight * setup.chassis.frontWeightBias
+    const extraRear = loads.rear - weight * (1 - setup.chassis.frontWeightBias)
+    expect(extraFront / (extraFront + extraRear)).toBeCloseTo(setup.aero.balanceFront, 6)
+  })
+
+  it('produces roughly 2.5x static load at 300kph, as a downforce sanity check', () => {
+    const loads = axles(0, 0, 300 / 3.6)
+    const ratio = (loads.front + loads.rear) / weight
+    expect(ratio).toBeGreaterThan(2)
+    expect(ratio).toBeLessThan(4)
   })
 })
 
