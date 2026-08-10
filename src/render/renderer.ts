@@ -18,7 +18,9 @@ import * as THREE from 'three'
 import { lerp, lerpAngle } from '../core/math'
 import type { World } from '../core/world'
 import type { TrackData } from '../track/spline'
+import { buildCarMesh, CAR } from './carMesh'
 import { cameraSetup, type CameraSetup } from './cameraSetup'
+import { approach, bodyAttitude, carMotion, wheelAngles } from './carMotion'
 import { buildSky, sunDirection, SKY, SUN } from './sky'
 import { buildTrackMesh, trackBounds } from './trackMesh'
 
@@ -148,7 +150,8 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
     scene.add(trackMesh)
   }
 
-  const car = buildCar()
+  const carMesh = buildCarMesh()
+  const car = carMesh.group
   car.traverse((object) => {
     if (object instanceof THREE.Mesh) {
       object.castShadow = true
@@ -166,6 +169,11 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
   let cameraInitialised = false
   let lastFrameTime = performance.now()
 
+  // Body attitude, smoothed across frames rather than snapped to the solver's
+  // latest accelerations, which step visibly when a tyre lets go.
+  let pitch = 0
+  let roll = 0
+
   const resize = (): void => {
     camera.aspect = window.innerWidth / window.innerHeight
     camera.updateProjectionMatrix()
@@ -176,6 +184,13 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
     draw(world, alpha) {
       const player = world.cars[0]
       if (player) {
+        const now = performance.now()
+        // Render-side dt, clamped. Every smoothing and animation below is
+        // cosmetic and must not depend on the physics clock — the two run at
+        // different rates, and coupling them would put framerate into the sim.
+        const dt = Math.min((now - lastFrameTime) / 1000, 0.1)
+        lastFrameTime = now
+
         // Interpolate between the last two physics states rather than snapping to
         // the latest — steps and refreshes drift, and snapping reads as stutter.
         const x = lerp(player.previousPosition.x, player.position.x, alpha)
@@ -194,6 +209,24 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
         sun.target.position.set(x, 0, z)
         sun.position.set(x + sunOffset.x, sunOffset.y, z + sunOffset.z)
 
+        // Steering, wheel rotation, and the body leaning on its springs. The
+        // wheels hang off the car group and the bodywork off `body`, so the
+        // attitude below leans the car without tilting the tyres off the road.
+        const telemetry = player.telemetry
+        const wheels = wheelAngles(player.input.steer, telemetry.speed, dt, {
+          front: CAR.frontTyreRadius,
+          rear: CAR.rearTyreRadius,
+        })
+        for (const steered of carMesh.steering) steered.rotation.y = wheels.steer
+        for (const [i, spin] of carMesh.spinning.entries()) {
+          spin.rotation.x += i < 2 ? wheels.frontSpin : wheels.rearSpin
+        }
+
+        const attitude = bodyAttitude(telemetry.longitudinalG, telemetry.lateralG)
+        pitch = approach(pitch, attitude.pitch, carMotion.attitudeStiffness, dt)
+        roll = approach(roll, attitude.roll, carMotion.attitudeStiffness, dt)
+        carMesh.body.rotation.set(pitch, 0, roll)
+
         if (!track) {
           // Snap the grid in whole squares so the reference lines never appear
           // to slide under the car, which would read as the car standing still.
@@ -209,12 +242,6 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
 
         cameraTarget.set(x - forwardX * cam.distance, cam.height, z - forwardZ * cam.distance)
         lookTarget.set(x + forwardX * cam.lookAhead, 0.8, z + forwardZ * cam.lookAhead)
-
-        const now = performance.now()
-        // Render-side dt, clamped. This smoothing is cosmetic and must not
-        // depend on the physics clock — the two run at different rates.
-        const dt = Math.min((now - lastFrameTime) / 1000, 0.1)
-        lastFrameTime = now
 
         if (!cameraInitialised) {
           camera.position.copy(cameraTarget)
@@ -255,55 +282,9 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
       }
       sky.geometry.dispose()
       ;(sky.material as THREE.Material).dispose()
+      carMesh.dispose()
       renderer.dispose()
       renderer.domElement.remove()
     },
   }
-}
-
-/**
- * A crude open-wheeler silhouette. Five boxes, one draw call each — well inside
- * the 150-call budget, and enough shape to read yaw at a glance, which is all a
- * placeholder needs to do.
- */
-function buildCar(): THREE.Group {
-  const group = new THREE.Group()
-
-  const bodyMaterial = new THREE.MeshStandardMaterial({
-    color: 0xe23636,
-    roughness: 0.35,
-    metalness: 0.15,
-  })
-  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x15181d, roughness: 0.8 })
-
-  const tub = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 3.6), bodyMaterial)
-  tub.position.y = 0.45
-  group.add(tub)
-
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.3, 1.6), bodyMaterial)
-  nose.position.set(0, 0.35, 2.4)
-  group.add(nose)
-
-  const frontWing = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.12, 0.5), darkMaterial)
-  frontWing.position.set(0, 0.18, 3.05)
-  group.add(frontWing)
-
-  const rearWing = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.45, 0.25), darkMaterial)
-  rearWing.position.set(0, 1.0, -1.9)
-  group.add(rearWing)
-
-  const wheelGeometry = new THREE.CylinderGeometry(0.36, 0.36, 0.38, 14)
-  wheelGeometry.rotateZ(Math.PI / 2)
-  for (const [x, z] of [
-    [-0.85, 1.6],
-    [0.85, 1.6],
-    [-0.85, -1.5],
-    [0.85, -1.5],
-  ] as const) {
-    const wheel = new THREE.Mesh(wheelGeometry, darkMaterial)
-    wheel.position.set(x, 0.36, z)
-    group.add(wheel)
-  }
-
-  return group
 }
