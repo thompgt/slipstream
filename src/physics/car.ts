@@ -83,7 +83,8 @@ export function stepCar(car: Car, dt: number, setup: CarSetup = carSetup): void 
   // Engine braking is proportional to revs, so it bites hardest in a low gear at
   // high rpm — exactly when you want it, on corner entry after a downshift.
   const brakingTorque = engine.engineBraking * (1 - throttle) * (car.rpm / engine.limiterRpm)
-  let driveForce = ((crankTorque - brakingTorque) * ratio * gearbox.efficiency) / chassis.wheelRadius
+  let driveForce =
+    ((crankTorque - brakingTorque) * ratio * gearbox.efficiency) / chassis.wheelRadius
 
   // Reverse: at a crawl with no throttle, the brake becomes reverse. Cheap, and
   // it means a spin doesn't end the run.
@@ -105,9 +106,17 @@ export function stepCar(car: Car, dt: number, setup: CarSetup = carSetup): void 
   // axle total. Identical while `loadSensitivity` is zero; once it is not, an
   // axle with its load piled onto one wheel has less grip than one carrying the
   // same total evenly, which is what makes bar rates and roll centres matter.
-  const gripFront = axleGrip(wheels[FL], wheels[FR], tyres.peakGripFront, tyres)
+  //
+  // Surface scales both axles equally: with a 2D model the car is a point, so
+  // "two wheels on the grass" is not something this can express yet. It is the
+  // per-wheel tyre model that makes putting one side in the dirt different from
+  // putting all four there, and until then a shared multiplier is the honest
+  // approximation rather than a fudge.
+  const surface = car.surface.grip
+  const gripFront = axleGrip(wheels[FL], wheels[FR], tyres.peakGripFront, tyres) * surface
   const gripRear =
     axleGrip(wheels[RL], wheels[RR], tyres.peakGripRear, tyres) *
+    surface *
     (handbrake ? tyres.handbrakeGrip : 1)
 
   // Direction of travel, for forces that oppose motion. Zeroed near a standstill
@@ -149,12 +158,15 @@ export function stepCar(car: Car, dt: number, setup: CarSetup = carSetup): void 
 
   // --- resistances -------------------------------------------------------------
   const drag = aero.drag * speed
-  const rolling = dir * chassis.rollingResistance * (loads.front + loads.rear)
+  // Rolling resistance is what makes gravel a trap. Grip alone would let a car
+  // carry speed through a run-off and rejoin having lost only a little time;
+  // scrubbing speed is what actually ends the lap, which is why the surface has
+  // two numbers rather than one.
+  const rolling = dir * chassis.rollingResistance * car.surface.drag * (loads.front + loads.rear)
 
   const forceX = bodyFxFront + fxRear - drag * u - rolling
   const forceY = bodyFyFront + tyreRear - drag * v
-  const moment =
-    distanceToFront * bodyFyFront - distanceToRear * tyreRear - chassis.yawDamping * r
+  const moment = distanceToFront * bodyFyFront - distanceToRear * tyreRear - chassis.yawDamping * r
 
   // --- 6. integrate ------------------------------------------------------------
   const accelX = forceX / chassis.mass
@@ -248,6 +260,11 @@ export function resetCar(car: Car): void {
   car.lateralAccel = 0
   car.lap = 0
   car.distanceAlongTrack = 0
+  // R puts the car back on the start line, which is asphalt. Keeping the grip of
+  // whatever it was reset out of would make the first step after a trip through
+  // the gravel behave as though it were still in it.
+  car.surface.grip = 1
+  car.surface.drag = 1
   // Off the hot path — only a NaN or a keypress gets here — so rebuilding from
   // the factory is worth it to keep this from drifting as fields are added.
   Object.assign(car.telemetry, createTelemetry())
@@ -281,8 +298,7 @@ function writeTelemetry(car: Car, t: TelemetryInput): void {
   out.downforce = t.downforce
   out.longitudinalG = t.accelX / 9.81
   out.lateralG = t.accelY / 9.81
-  out.gripUsageFront =
-    t.gripFront > 0 ? Math.hypot(t.fxFront, t.lateralFront) / t.gripFront : 0
+  out.gripUsageFront = t.gripFront > 0 ? Math.hypot(t.fxFront, t.lateralFront) / t.gripFront : 0
   out.gripUsageRear = t.gripRear > 0 ? Math.hypot(t.fxRear, t.lateralRear) / t.gripRear : 0
   out.driveForce = t.fxRear
 }
