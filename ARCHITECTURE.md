@@ -138,6 +138,28 @@ This buys three things for free:
 simulation would depend on framerate — the exact thing the fixed timestep exists to
 prevent. Same rule for `ui/` and `audio/`.
 
+### 3. The track reaches the physics as two numbers
+
+```ts
+interface SurfaceContact {
+  grip: number // multiplies available tyre grip
+  drag: number // multiplies rolling resistance
+}
+```
+
+`game/` locates each car and writes this onto it; `physics/` reads it and never learns what
+a circuit is. Same shape of contract as `InputState`, for the same reason — two modules that
+must not import each other meeting on a struct in `core/`.
+
+Two numbers rather than one because they fail differently. Grass takes away your ability to
+point the car but not your speed; gravel leaves you able to steer perfectly well while
+going nowhere. A single "off-track penalty" cannot express either, and the version that
+tries ends up being tuned until it is wrong about both.
+
+The car reads the surface found under it at the end of the *previous* step. Locating a car
+needs its new position, and the physics needs the surface before it moves — 16ms of lag at
+the moment two wheels cross a white line, which no driver can perceive.
+
 ---
 
 ## Where state lives
@@ -147,18 +169,27 @@ A single mutable `World` object owned by `core/`:
 ```ts
 interface World {
   time: number // accumulated simulation time, ms — the only clock
-  cars: Car[] // pose, velocity, per-wheel state
+  cars: Car[] // pose, velocity, per-wheel state, lap, surface
   race: RaceState // phase, lap counts, positions
-  track: null // ← TrackData, once the pipeline is wired in
 }
 ```
 
-`track` is typed `null` today rather than `TrackData | null`, and that is the one place the
-module table bites: `core/` imports nothing, so it cannot name a type that lives in
-`track/`. Wiring the circuit into the world means either moving the track types down into
-`core/` or handing the track to the systems that need it rather than parking it on `World`.
-That decision is open, and it is the last step between a tested track pipeline and a
-circuit you can drive.
+**The circuit is deliberately not in here.** `World` carried a `track: null` placeholder
+for a while, and it was the one place the module table bit: `core/` imports nothing, so it
+cannot name a type that lives in `track/`. The choice was to move the track types down into
+`core/` or to hand the circuit to the systems that need it — and the second turned out to
+cost one line in `main.ts`, because nothing ever actually asked `World` for the track:
+
+```ts
+const track = monza()
+const race = createRaceDirector(buildTrackIndex(track)) // laps, standings, surface
+const renderer = createRenderer(document.body, { track }) // the road you can see
+```
+
+What the cars carry is the track's *answer*, not the track: `distanceAlongTrack`, `lap`,
+and `surface` — a pair of multipliers for grip and rolling resistance. Those are numbers
+`core/` can name, and they are the whole of the circuit's influence on the physics, which
+is what keeps `physics/` runnable in Node with no circuit at all.
 
 **Mutable and plain, by design.** A 60Hz simulation touching every car's state each step is
 precisely the workload immutable state management is worst at — allocating fresh objects
@@ -177,9 +208,9 @@ subscribe. This keeps `physics/` from importing `audio/`.
 
 ## Folder structure
 
-What exists today. Modules still to be filled in (`ai/`, `game/`, `audio/`) hold a single
-documented placeholder each rather than a speculative file list — the shape they will take
-is described in the module table above, and inventing filenames here ages badly.
+What exists today. Modules still to be filled in (`ai/`, `audio/`) hold a single documented
+placeholder each rather than a speculative file list — the shape they will take is
+described in the module table above, and inventing filenames here ages badly.
 
 ```
 slipstream/
@@ -205,19 +236,24 @@ slipstream/
     │   ├── gearbox.ts          # torque curve + shift logic
     │   ├── regression.test.ts  # ← the frozen handling envelope
     │   ├── stability.test.ts   # ← it must never explode, and must be deterministic
+    │   ├── surface.test.ts     # ← what grass and gravel each cost you
     │   └── carSetup.ts         # ← the car's tuning file. One place.
     ├── track/
     │   ├── author.ts           # circuits as straights and arcs
     │   ├── spline.ts           # → evenly-sampled centreline
     │   ├── query.ts            # position → distance, offset, surface. O(1).
+    │   ├── track.test.ts
     │   └── circuits/monza.ts
     ├── input/
     │   └── index.ts            # keyboard + gamepad → InputState
     ├── ai/driver.ts            # placeholder — M4
-    ├── game/race.ts            # placeholder — M3, M5
+    ├── game/
+    │   ├── race.ts             # ← locate, laps, lap times, standings, surface
+    │   └── race.test.ts        # ← the start/finish wraparound, mostly
     ├── audio/engine.ts         # placeholder — M6
     ├── render/
     │   ├── renderer.ts · cameraSetup.ts
+    │   └── trackMesh.ts        # ← the road, from the same samples physics reads
     └── ui/
         └── debugOverlay.ts · tuningPanel.ts
 ```
