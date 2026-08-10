@@ -28,6 +28,27 @@ export const createInputState = (): InputState => ({
 })
 
 /**
+ * What the car is currently driving on, reduced to the two numbers the physics
+ * needs.
+ *
+ * Declared here for the same reason `InputState` is: it is a contract between
+ * two modules that must not import each other. `track/` knows that gravel is
+ * gravel; `physics/` only ever needs to know that grip is scaled by 0.38 and
+ * rolling resistance by 12. Passing the reduced form keeps `physics/` free of
+ * any notion of a circuit — which is what lets the whole model still run in Node
+ * with no track at all.
+ */
+export interface SurfaceContact {
+  /** Multiplies available tyre grip. 1 is dry asphalt. */
+  grip: number
+  /** Multiplies rolling resistance. 1 is dry asphalt. */
+  drag: number
+}
+
+/** Dry asphalt — the default, and what a car with no track under it drives on. */
+export const createSurfaceContact = (): SurfaceContact => ({ grip: 1, drag: 1 })
+
+/**
  * Read-only-by-convention diagnostics, refreshed every physics step.
  *
  * Written by `physics/`, read by `ui/`. It lives on the car rather than being
@@ -121,6 +142,17 @@ export interface Car {
    */
   lateralAccel: number
 
+  /**
+   * Written by `game/` from the track query, read by `physics/`.
+   *
+   * A step reads the surface found under the car at the *end of the previous*
+   * step — the same one-frame feedback as the accelerations above, and for the
+   * same reason: locating the car needs its new position, and the physics needs
+   * the surface before it moves. 16ms of lag at the moment two wheels cross a
+   * white line is not something a driver can perceive.
+   */
+  surface: SurfaceContact
+
   telemetry: CarTelemetry
 
   lap: number
@@ -144,6 +176,7 @@ export function createCar(id: number, isPlayer = false): Car {
     shiftTimer: 0,
     longitudinalAccel: 0,
     lateralAccel: 0,
+    surface: createSurfaceContact(),
     telemetry: createTelemetry(),
     lap: 0,
     distanceAlongTrack: 0,
