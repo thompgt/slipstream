@@ -192,13 +192,25 @@ export interface RaceState {
   standings: number[]
 }
 
+/**
+ * Everything the simulation owns.
+ *
+ * Note what is *not* here: the circuit. `World` held a `track: null` placeholder
+ * for a while, waiting for a type it could never name — `core/` imports nothing,
+ * so a `TrackData` field here would mean either moving the track types down into
+ * `core/` or inverting the dependency that keeps the module table working. The
+ * alternative turned out to be free: `main.ts` builds the circuit and hands it to
+ * the two systems that actually need it, the race director and the renderer.
+ * Nothing ever asked `World` for the track, so nothing lost anything.
+ *
+ * What the cars carry instead is the *answer* the track gave: distance along the
+ * lap, lap count, and the surface underneath. Those are numbers `core/` can name.
+ */
 export interface World {
   /** Accumulated simulation time in ms. The only clock for game timing. */
   time: number
   cars: Car[]
   race: RaceState
-  /** Populated in M2. */
-  track: null
 }
 
 export function createWorld(): World {
@@ -206,6 +218,5 @@ export function createWorld(): World {
     time: 0,
     cars: [],
     race: { phase: 'idle', totalLaps: 3, standings: [] },
-    track: null,
   }
 }
