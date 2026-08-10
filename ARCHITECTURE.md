@@ -81,7 +81,7 @@ import" row.**
 | `track/`   | Circuit authoring, spline sampling, surface and distance queries          | `core`          |
 | `input/`   | Keyboard + gamepad → normalised `InputState`                              | `core`          |
 | `ai/`      | Racing line following → `InputState`                                      | `core`, `track` |
-| `game/`    | Race rules, laps, positions, flags, state machine                         | `core`, `track` |
+| `game/`    | Locating cars, laps, lap times, positions, flags, race state              | `core`, `track` |
 | `render/`  | Three.js scene, meshes, chase camera, interpolation                       | `core`, `track` |
 | `ui/`      | HUD, menus, debug overlay (DOM, not canvas)                               | `core`          |
 | `audio/`   | Web Audio graph, engine synthesis, event sounds                           | `core`          |
@@ -109,7 +109,7 @@ a module import upward, it is in the wrong file.
 
 ---
 
-## The two contracts that matter
+## The three contracts that matter
 
 ### 1. AI emits the same struct as the human
 
@@ -156,7 +156,7 @@ point the car but not your speed; gravel leaves you able to steer perfectly well
 going nowhere. A single "off-track penalty" cannot express either, and the version that
 tries ends up being tuned until it is wrong about both.
 
-The car reads the surface found under it at the end of the *previous* step. Locating a car
+The car reads the surface found under it at the end of the _previous_ step. Locating a car
 needs its new position, and the physics needs the surface before it moves — 16ms of lag at
 the moment two wheels cross a white line, which no driver can perceive.
 
@@ -186,7 +186,7 @@ const race = createRaceDirector(buildTrackIndex(track)) // laps, standings, surf
 const renderer = createRenderer(document.body, { track }) // the road you can see
 ```
 
-What the cars carry is the track's *answer*, not the track: `distanceAlongTrack`, `lap`,
+What the cars carry is the track's _answer_, not the track: `distanceAlongTrack`, `lap`,
 and `surface` — a pair of multipliers for grip and rolling resistance. Those are numbers
 `core/` can name, and they are the whole of the circuit's influence on the physics, which
 is what keeps `physics/` runnable in Node with no circuit at all.
