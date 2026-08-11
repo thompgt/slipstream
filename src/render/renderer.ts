@@ -23,6 +23,7 @@ import { cameraSetup, type CameraSetup } from './cameraSetup'
 import { approach, bodyAttitude, carMotion, wheelAngles } from './carMotion'
 import { buildSky, sunDirection, SKY, SUN } from './sky'
 import { buildTrackMesh, trackBounds } from './trackMesh'
+import { buildTrackside } from './trackside'
 
 export interface Renderer {
   /** @param alpha 0..1 interpolation between the previous and current physics state. */
@@ -149,6 +150,12 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
     trackMesh.receiveShadow = true
     scene.add(trackMesh)
   }
+
+  // Barriers, boards, tyre stacks, the treeline and a grandstand. Only with a
+  // circuit: the grid fallback is for looking at the car, and furniture around
+  // an empty plane would be furniture around nothing.
+  const trackside = track ? buildTrackside(track) : null
+  if (trackside) for (const object of trackside.objects) scene.add(object)
 
   const carMesh = buildCarMesh()
   const car = carMesh.group
@@ -283,6 +290,7 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
       sky.geometry.dispose()
       ;(sky.material as THREE.Material).dispose()
       carMesh.dispose()
+      trackside?.dispose()
       renderer.dispose()
       renderer.domElement.remove()
     },

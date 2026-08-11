@@ -698,7 +698,7 @@ function tyreGeometry(radius: number, width: number): THREE.BufferGeometry {
     new THREE.Vector2(radius * 0.82, half),
     new THREE.Vector2(CAR.rimRadius * 0.98, half - 0.01),
   ]
-  const geometry = new THREE.LatheGeometry(profile, 28)
+  const geometry = new THREE.LatheGeometry(profile, 20)
   // Lathes spin around +y; a wheel spins around the car's x.
   geometry.rotateZ(Math.PI / 2)
   return geometry
