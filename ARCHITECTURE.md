@@ -102,7 +102,9 @@ functions. That's what makes it testable in Node and is the main reason the modu
 exists at all.
 
 **Tuning constants belong to the module they describe, not to the car.** Input ramp rates
-live in `core/feel.ts` and camera tuning in `render/cameraSetup.ts`, because bundling them
+live in `core/feel.ts`, camera tuning in `render/cameraSetup.ts` and how the car steers,
+spins its wheels and leans on its springs in `render/carMotion.ts` — all of those describe
+_watching_ the car rather than the car, and bundling them
 into `physics/carSetup.ts` is what made `input/` and `render/` import `physics/` — the
 table above was quietly violated for exactly one evening's convenience. If a constant makes
 a module import upward, it is in the wrong file.
@@ -253,7 +255,12 @@ slipstream/
     ├── audio/engine.ts         # placeholder — M6
     ├── render/
     │   ├── renderer.ts · cameraSetup.ts
-    │   └── trackMesh.ts        # ← the road, from the same samples physics reads
+    │   ├── sky.ts              # gradient dome + the sun's elevation and colour
+    │   ├── carMesh.ts          # ← lofted 2026-regulation car, merged by material
+    │   ├── carMotion.ts        # ← steer/spin/lean tuning. Render-side, not the car.
+    │   ├── trackside.ts        # barriers, boards, tyre stacks, trees, grandstand
+    │   ├── trackMesh.ts        # ← the road, from the same samples physics reads
+    │   └── budget.test.ts      # ← draw calls and triangles, against a six-car grid
     └── ui/
         └── debugOverlay.ts · tuningPanel.ts
 ```

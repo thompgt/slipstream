@@ -29,8 +29,16 @@ TypeScript · Vite · Three.js · custom vehicle physics · no install, static d
 > you are credited with, and the grip under your tyres — so running wide onto the grass
 > costs you the car, and putting it in the gravel costs you the lap.
 >
-> **Not there yet.** No barriers — you can drive off into the scenery and back. No other
-> cars, no flags, no sectors on screen. AI and race rules are next; see [PLAN.md](PLAN.md).
+> **The look.** ACES-tone-mapped, lit by a sun at a real time of day with soft shadows
+> under the car. The car itself is built to 2026 regulations — 5.6m long, 2.0m wide, 0.97m
+> tall on 18-inch wheels — with lofted bodywork, cambered wings, a halo and wishbones at
+> each corner. Barriers, sponsor boards, tyre stacks, marshal posts and the Monza treeline
+> are generated from the same sample table as the road, because an empty ribbon of tarmac
+> reads as slow however fast you are actually going.
+>
+> **Not there yet.** The barriers are scenery, not collision — you can still drive off into
+> the trees and back. No other cars, no flags, no sectors on screen. AI and race rules are
+> next; see [PLAN.md](PLAN.md).
 
 Play it: **<https://thompgt.github.io/slipstream/>**
 
