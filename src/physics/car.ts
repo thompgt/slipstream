@@ -26,8 +26,9 @@
  */
 
 import { clamp } from '../core/math'
-import { createTelemetry, type Car } from '../core/world'
+import { createTelemetry, type Car, type WallQuery } from '../core/world'
 import { carSetup, type CarSetup } from './carSetup'
+import { resolveWalls } from './collision'
 import { engineTorque, totalRatio, updateGearbox } from './gearbox'
 import { createWheelLoads, FL, FR, RL, RR, wheelLoads, type AxleLoads } from './suspension'
 import { axleGrip, tyreForce } from './tyre'
@@ -42,8 +43,20 @@ const loads: AxleLoads = { front: 0, rear: 0 }
  * `dt` is always FIXED_DT. Never scale behaviour by a variable frame delta —
  * integration of tyre slip is not linear in dt, so that would make the car feel
  * different on different machines.
+ *
+ * `walls` is optional and the tests mostly omit it: with no query the car drives
+ * on an infinite plane, which is the right model for a tyre or gearbox test and
+ * is what keeps this runnable with no circuit at all. Unlike `car.surface`, it is
+ * passed in rather than read off the car, because a wall is the one thing that
+ * cannot tolerate the one-step lag the surface accepts — at 90m/s, 16ms of stale
+ * position is a metre and a half of bodywork already inside the barrier.
  */
-export function stepCar(car: Car, dt: number, setup: CarSetup = carSetup): void {
+export function stepCar(
+  car: Car,
+  dt: number,
+  setup: CarSetup = carSetup,
+  walls?: WallQuery,
+): void {
   // Snapshot the pose the renderer will interpolate from.
   car.previousPosition.x = car.position.x
   car.previousPosition.z = car.position.z
@@ -214,6 +227,12 @@ export function stepCar(car: Car, dt: number, setup: CarSetup = carSetup): void 
     return
   }
 
+  // Last, on the position the car actually reached. Telemetry below therefore
+  // reports the speed the car had a moment before the barrier took it away —
+  // one frame of lag on a number nobody reads mid-impact, in exchange for
+  // resolving the contact against a current position rather than a stale one.
+  if (walls) resolveWalls(car, dt, walls, setup)
+
   writeTelemetry(car, {
     speed: Math.hypot(u, v),
     slipFront,
@@ -265,6 +284,8 @@ export function resetCar(car: Car): void {
   // the gravel behave as though it were still in it.
   car.surface.grip = 1
   car.surface.drag = 1
+  // Otherwise R out of a barrier and the camera keeps shaking on the start line.
+  car.impact = 0
   // Off the hot path — only a NaN or a keypress gets here — so rebuilding from
   // the factory is worth it to keep this from drifting as fields are added.
   Object.assign(car.telemetry, createTelemetry())

@@ -212,6 +212,30 @@ describe('shake', () => {
     )
   })
 
+  it('shakes on impact even with the car stopped dead', () => {
+    const rig = rigFor('cockpit')
+    // The surface term is speed-scaled and would be zero here. A barrier that
+    // takes all your speed away must not also take the shake away with it —
+    // that is the frame where the picture most needs to move.
+    expect(shakeAmount(rig, 0, 1, 20)).toBeGreaterThan(shakeAmount(rig, 80, 1))
+  })
+
+  it('shakes harder the harder the hit, up to a ceiling', () => {
+    const rig = rigFor('tcam')
+    expect(shakeAmount(rig, 40, 1, 12)).toBeGreaterThan(shakeAmount(rig, 40, 1, 4))
+    // Past a point more shake is just an unreadable screen, so a 40m/s hit and
+    // an 80m/s one look the same. Both are over.
+    expect(shakeAmount(rig, 40, 1, 80)).toBeCloseTo(shakeAmount(rig, 40, 1, 40))
+  })
+
+  it('treats no impact as no impact', () => {
+    const rig = rigFor('chase')
+    expect(shakeAmount(rig, 50, 0.85, 0)).toBe(shakeAmount(rig, 50, 0.85))
+    // Decay can only approach zero from above, but a negative must not subtract
+    // from the surface buzz if one ever arrives.
+    expect(shakeAmount(rig, 50, 0.85, -5)).toBe(shakeAmount(rig, 50, 0.85))
+  })
+
   it('stays inside its stated amplitude', () => {
     // The offset is a sum of sines whose coefficients must not add up to more
     // than one, or "5cm of shake" is 5cm on paper and more on screen.

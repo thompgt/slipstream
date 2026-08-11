@@ -319,7 +319,11 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
         // together, so the camera is shaken rather than aimed somewhere else —
         // repointing it at 60Hz reads as a fault, not as a kerb.
         elapsed += dt
-        shakeOffset(shakeAmount(rig, speed, player.surface.grip), elapsed, cameraShake)
+        shakeOffset(
+          shakeAmount(rig, speed, player.surface.grip, player.impact),
+          elapsed,
+          cameraShake,
+        )
         camera.position.add(cameraShake)
         lookTarget.add(cameraShake)
 

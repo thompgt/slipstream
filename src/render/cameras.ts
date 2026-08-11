@@ -239,6 +239,17 @@ export const shake = {
   floor: 0.08,
   /** Grip loss, below dry asphalt's 1.0, that counts as maximally rough. */
   gripSpan: 0.6,
+  /**
+   * Metres of camera travel per m/s of impact.
+   *
+   * Separate from the surface term and not scaled by speed: a barrier hit at
+   * 30kph in the pit lane still throws the camera, and a car that has just been
+   * stopped dead by a wall has no speed left to scale by at the moment it most
+   * needs to look violent.
+   */
+  impactGain: 0.008,
+  /** Ceiling on the impact term, m. Past a certain point it is just unreadable. */
+  impactMax: 0.18,
 } as const
 
 /**
@@ -250,18 +261,29 @@ export const shake = {
  * on `World`). It lands where you would want it to anyway: kerb 0.25, concrete
  * 0.13, grass 0.92, gravel 1.
  *
- * CLAUDE.md asks for shake that scales with "kerb and impact". This is the kerb
- * half. Impact needs collisions, and nothing collides yet.
+ * This is the kerb half of what CLAUDE.md asks for; `shakeAmount` adds the
+ * impact half from `Car.impact`.
  */
 export function roughness(grip: number): number {
   return Math.min(Math.max((1 - grip) / shake.gripSpan, 0), 1)
 }
 
-/** Metres of shake to apply this frame. */
-export function shakeAmount(rig: CameraRig, speed: number, grip: number): number {
+/**
+ * Metres of shake to apply this frame.
+ *
+ * Two terms that add rather than blend. The surface term is a continuous buzz
+ * that needs speed to exist; the impact term is a decaying jolt that does not,
+ * and the moment a barrier has taken all your speed away is exactly when the
+ * camera must not go still.
+ *
+ * `impact` is the decaying closing speed of the last hit, in m/s — `physics/`
+ * owns the decay, so this stays a pure function of the state it is handed.
+ */
+export function shakeAmount(rig: CameraRig, speed: number, grip: number, impact = 0): number {
   const rough = shake.floor + (1 - shake.floor) * roughness(grip)
   const pace = Math.min(Math.max(speed, 0) / shake.speed, 1)
-  return rig.shake * shake.amplitude * rough * pace
+  const hit = Math.min(Math.max(impact, 0) * shake.impactGain, shake.impactMax)
+  return rig.shake * (shake.amplitude * rough * pace + hit)
 }
 
 /**
