@@ -36,6 +36,10 @@ TypeScript · Vite · Three.js · custom vehicle physics · no install, static d
 > are generated from the same sample table as the road, because an empty ribbon of tarmac
 > reads as slow however fast you are actually going.
 >
+> The tarmac is grained by a procedural noise map shared with the terrain, tiled to a
+> whole number of laps so there is no seam at the line — flat vertex colour is one draw
+> call and it is also why the road used to read as painted card.
+>
 > **The shots.** Three cameras on **C**: a sprung chase that lags on purpose, the T-cam on
 > the roll hoop, and the halo cam at the driver's eyeline. The onboard pair are bolted to
 > the bodywork, so the horizon tilts when the car does, and both pick up a vibration that

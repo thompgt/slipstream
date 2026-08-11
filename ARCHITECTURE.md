@@ -268,8 +268,10 @@ slipstream/
     │   ├── carMotion.ts        # ← steer/spin/lean tuning. Render-side, not the car.
     │   ├── trackside.ts        # barriers, boards, tyre stacks, trees, grandstand
     │   ├── trackMesh.ts        # ← the road, from the same samples physics reads
+    │   ├── surfaceTexture.ts   # procedural grain, shared by the road and terrain
     │   ├── budget.test.ts      # ← draw calls and triangles, against a six-car grid
-    │   └── cameras.test.ts     # ← where each rig sits, and which way is up
+    │   ├── cameras.test.ts     # ← where each rig sits, and which way is up
+    │   └── surfaceTexture.test.ts  # ← that the grain tiles, and is not secretly flat
     └── ui/
         └── debugOverlay.ts · tuningPanel.ts
 ```
