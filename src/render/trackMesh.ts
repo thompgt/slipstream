@@ -22,13 +22,10 @@
  */
 
 import * as THREE from 'three'
+import { KERB_WIDTH, RUNOFF_WIDTH } from '../track/layout'
 import type { SurfaceType, TrackData, TrackSample } from '../track/spline'
 import { surfaceGrain, TILE_METRES } from './surfaceTexture'
 
-/** Width of the kerb strip outside the white line, m. Matches `track/query`. */
-export const KERB_WIDTH = 1.2
-/** How far the graded run-off extends beyond the kerb, m. */
-export const RUNOFF_WIDTH = 14
 /** Painted line width, m. */
 const LINE_WIDTH = 0.15
 /** Length of one red or white kerb block, m. */

@@ -15,6 +15,7 @@
  * nine-cell neighbourhood always contains the true nearest sample.
  */
 
+import { KERB_WIDTH } from './layout'
 import type { TrackData, TrackSample, SurfaceType } from './spline'
 
 /** Where a car is, relative to the road. */
@@ -46,9 +47,6 @@ export const createTrackPosition = (): TrackPosition => ({
   surface: 'asphalt',
   sampleIndex: 0,
 })
-
-/** Width of the kerb strip outside the white line, m. */
-const KERB_WIDTH = 1.2
 
 /**
  * How far the neighbourhood search will widen before giving up and scanning

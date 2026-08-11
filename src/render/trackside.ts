@@ -40,13 +40,19 @@
  */
 
 import * as THREE from 'three'
+import { barrierLateral, BARRIER_OFFSET } from '../track/layout'
 import type { TrackData, TrackSample } from '../track/spline'
-import { KERB_WIDTH, RUNOFF_WIDTH } from './trackMesh'
 
 /** Real dimensions, m. CLAUDE.md asks for these not to be eyeballed either. */
 const BARRIER = {
-  /** Distance from the centreline out to the face of the boards. */
-  offset: KERB_WIDTH + RUNOFF_WIDTH + 1.5,
+  /**
+   * Distance from the centreline out to the face of the boards.
+   *
+   * Imported, not declared: this is the line the collision solver stops the car
+   * at, so a barrier drawn anywhere else is a barrier you hit before you reach
+   * or after you pass through. See `track/layout`.
+   */
+  offset: BARRIER_OFFSET,
   /** Advertising hoarding: chest high, and the thing you actually see. */
   boardHeight: 1.05,
   /** Guardrail above the boards. */
@@ -127,8 +133,8 @@ function buildBarriers(track: TrackData): THREE.Mesh {
       const here = samples[(step * stride) % samples.length]!
       const next = samples[((step + 1) * stride) % samples.length]!
 
-      const lateral = side * (here.width + BARRIER.offset)
-      const lateralNext = side * (next.width + BARRIER.offset)
+      const lateral = side * barrierLateral(here.width)
+      const lateralNext = side * barrierLateral(next.width)
       const [x0, z0] = offsetPoint(here, lateral)
       const [x1, z1] = offsetPoint(next, lateralNext)
 
