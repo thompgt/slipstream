@@ -102,12 +102,19 @@ functions. That's what makes it testable in Node and is the main reason the modu
 exists at all.
 
 **Tuning constants belong to the module they describe, not to the car.** Input ramp rates
-live in `core/feel.ts`, camera tuning in `render/cameraSetup.ts` and how the car steers,
+live in `core/feel.ts`, chase-camera tuning in `render/cameraSetup.ts` and how the car steers,
 spins its wheels and leans on its springs in `render/carMotion.ts` — all of those describe
 _watching_ the car rather than the car, and bundling them
 into `physics/carSetup.ts` is what made `input/` and `render/` import `physics/` — the
 table above was quietly violated for exactly one evening's convenience. If a constant makes
 a module import upward, it is in the wrong file.
+
+The onboard camera rigs in `render/cameras.ts` are the deliberate exception to the tuning
+split above: they are not in `cameraSetup.ts` and the tuning panel cannot reach them. Their
+positions are where those cameras physically sit on the car — on the roll hoop, at the
+driver's eyeline — and a slider that moves the roll-hoop camera off the roll hoop only
+makes the shot wrong. The chase camera stays tunable because it is a directorial choice
+rather than a mounting point.
 
 ---
 
@@ -255,12 +262,14 @@ slipstream/
     ├── audio/engine.ts         # placeholder — M6
     ├── render/
     │   ├── renderer.ts · cameraSetup.ts
+    │   ├── cameras.ts          # ← chase / T-cam / halo cam rigs, FOV and shake
     │   ├── sky.ts              # gradient dome + the sun's elevation and colour
     │   ├── carMesh.ts          # ← lofted 2026-regulation car, merged by material
     │   ├── carMotion.ts        # ← steer/spin/lean tuning. Render-side, not the car.
     │   ├── trackside.ts        # barriers, boards, tyre stacks, trees, grandstand
     │   ├── trackMesh.ts        # ← the road, from the same samples physics reads
-    │   └── budget.test.ts      # ← draw calls and triangles, against a six-car grid
+    │   ├── budget.test.ts      # ← draw calls and triangles, against a six-car grid
+    │   └── cameras.test.ts     # ← where each rig sits, and which way is up
     └── ui/
         └── debugOverlay.ts · tuningPanel.ts
 ```

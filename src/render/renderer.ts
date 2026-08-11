@@ -21,6 +21,17 @@ import type { TrackData } from '../track/spline'
 import { buildCarMesh, CAR } from './carMesh'
 import { cameraSetup, type CameraSetup } from './cameraSetup'
 import { approach, bodyAttitude, carMotion, wheelAngles } from './carMotion'
+import {
+  cameraPose,
+  cameraUp,
+  fovFor,
+  nextView,
+  rigFor,
+  shakeAmount,
+  shakeOffset,
+  type CameraRig,
+  type CameraView,
+} from './cameras'
 import { buildSky, sunDirection, SKY, SUN } from './sky'
 import { buildTrackMesh, trackBounds } from './trackMesh'
 import { buildTrackside } from './trackside'
@@ -29,6 +40,10 @@ export interface Renderer {
   /** @param alpha 0..1 interpolation between the previous and current physics state. */
   draw: (world: World, alpha: number) => void
   resize: () => void
+  /** Switch to the next broadcast camera and report which one it is. */
+  cycleView: () => CameraView
+  /** Which camera is live, for the overlay. */
+  view: () => CameraRig
   dispose: () => void
 }
 
@@ -173,8 +188,22 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
   // Camera state, render-side only. Starts behind the car's spawn pose.
   const cameraTarget = new THREE.Vector3()
   const lookTarget = new THREE.Vector3()
+  const cameraShake = new THREE.Vector3()
   let cameraInitialised = false
   let lastFrameTime = performance.now()
+
+  let view: CameraView = 'chase'
+  // Reused, not rebuilt each frame: a fresh object per frame at 60Hz is the GC
+  // pressure `World` is kept plain and mutable to avoid.
+  const carPose = { x: 0, z: 0, heading: 0, pitch: 0, roll: 0 }
+  /**
+   * Render clock, seconds. Drives the shake only.
+   *
+   * Accumulated from frame deltas rather than read off `world.time`, because the
+   * shake is cosmetic and must not be tied to the physics clock — and because
+   * `performance.now()` is a large number whose sines lose precision.
+   */
+  let elapsed = 0
 
   // Body attitude, smoothed across frames rather than snapped to the solver's
   // latest accelerations, which step visibly when a tyre lets go.
@@ -243,29 +272,49 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
           ground.position.z = grid.position.z
         }
 
-        const cam = tuning
-        const forwardX = Math.sin(heading)
-        const forwardZ = Math.cos(heading)
+        const rig = rigFor(view, tuning)
+        // The onboard rigs ride the body, so they get the smoothed lean the
+        // bodywork is already using rather than the solver's raw accelerations.
+        carPose.x = x
+        carPose.z = z
+        carPose.heading = heading
+        carPose.pitch = pitch
+        carPose.roll = roll
+        cameraPose(rig, carPose, cameraTarget, lookTarget)
+        // Set before `lookAt`, which reads it to build the view matrix.
+        cameraUp(rig, carPose, camera.up)
 
-        cameraTarget.set(x - forwardX * cam.distance, cam.height, z - forwardZ * cam.distance)
-        lookTarget.set(x + forwardX * cam.lookAhead, 0.8, z + forwardZ * cam.lookAhead)
+        const speed = Math.hypot(player.velocity.x, player.velocity.z)
 
-        if (!cameraInitialised) {
+        if (!cameraInitialised || rig.stiffness === null) {
+          // Bolted to the car: no spring, or the shot slides around inside the
+          // tub. Also the first frame of any view, so switching cameras cuts
+          // rather than sweeping across the circuit.
           camera.position.copy(cameraTarget)
           cameraInitialised = true
         } else {
           // Exponential smoothing, framerate-independent. The lag is the point:
           // a rigidly-attached camera reads as "no speed" and gets misdiagnosed
           // as a physics problem (PLAN.md, M1).
-          const t = 1 - Math.exp(-cam.stiffness * dt)
+          const t = 1 - Math.exp(-rig.stiffness * dt)
           camera.position.lerp(cameraTarget, t)
         }
+
+        // Vibration from what is under the tyres, added *after* the spring: a
+        // 6/s spring is a low-pass filter, and a 6Hz wobble fed through it as a
+        // target comes out the far side as almost nothing. Eye and look-at move
+        // together, so the camera is shaken rather than aimed somewhere else —
+        // repointing it at 60Hz reads as a fault, not as a kerb.
+        elapsed += dt
+        shakeOffset(shakeAmount(rig, speed, player.surface.grip), elapsed, cameraShake)
+        camera.position.add(cameraShake)
+        lookTarget.add(cameraShake)
+
         camera.lookAt(lookTarget)
 
         // FOV widens with speed. Cheap, and it does more for the sensation of
         // pace than any amount of extra geometry.
-        const speed = Math.hypot(player.velocity.x, player.velocity.z)
-        const fov = cam.baseFov + cam.fovGain * Math.min(speed / cam.fovSpeed, 1)
+        const fov = fovFor(rig, speed)
         if (Math.abs(camera.fov - fov) > 0.01) {
           camera.fov = fov
           camera.updateProjectionMatrix()
@@ -280,6 +329,14 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
       renderer.render(scene, camera)
     },
     resize,
+    cycleView() {
+      view = nextView(view)
+      // Cut, don't sweep: letting the chase spring travel from the roll hoop to
+      // nine metres behind the car turns a camera change into a fly-by.
+      cameraInitialised = false
+      return view
+    },
+    view: () => rigFor(view, tuning),
     dispose() {
       // The circuit is the one large allocation here — a few megabytes of
       // buffers that the GPU keeps until it is told otherwise.

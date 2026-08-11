@@ -36,6 +36,11 @@ TypeScript · Vite · Three.js · custom vehicle physics · no install, static d
 > are generated from the same sample table as the road, because an empty ribbon of tarmac
 > reads as slow however fast you are actually going.
 >
+> **The shots.** Three cameras on **C**: a sprung chase that lags on purpose, the T-cam on
+> the roll hoop, and the halo cam at the driver's eyeline. The onboard pair are bolted to
+> the bodywork, so the horizon tilts when the car does, and both pick up a vibration that
+> scales with speed and with how rough what you are driving on is.
+>
 > **Not there yet.** The barriers are scenery, not collision — you can still drive off into
 > the trees and back. No other cars, no flags, no sectors on screen. AI and race rules are
 > next; see [PLAN.md](PLAN.md).
@@ -51,7 +56,9 @@ npm run dev
 
 Then open the printed URL. You start on the line at Monza, pointing up the main straight.
 Drive with **WASD** or the **arrow keys**, **space** for the handbrake, or plug in a
-gamepad. **`** toggles the telemetry overlay — lap, current, last and best, plus how far
+gamepad. **C** cycles the cameras — chase, the T-cam on the roll hoop, and the halo cam at
+the driver's eyeline; the two onboard shots lean with the car and pick up the kerbs.
+**`** toggles the telemetry overlay — lap, current, last and best, plus how far
 round you are and what you are standing on. **R** puts you back on the line, and **T**
 opens the live tuning panel, where every slider changes the car on the next physics step.
 

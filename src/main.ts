@@ -88,6 +88,7 @@ const loop = createLoop({
     overlay.set('g long/lat', `${t.longitudinalG.toFixed(2)} / ${t.lateralG.toFixed(2)}`)
     overlay.set('downforce', `${(t.downforce / 1000).toFixed(1)} kN`)
     overlay.set('input', input.usingGamepad ? 'gamepad' : 'keyboard')
+    overlay.set('camera', `${renderer.view().label}   (C)`)
 
     const timing = race.timing(player.id)
     const where = race.positionOf(player.id)
@@ -142,6 +143,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Backquote') overlay.toggle()
   if (e.code === 'KeyR') restart()
   if (e.code === 'KeyT') toggleTuningPanel()
+  if (e.code === 'KeyC') renderer.cycleView()
 })
 
 // A known pose before the first frame is drawn. Deliberately no priming
