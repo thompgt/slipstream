@@ -33,6 +33,7 @@ import {
   type CameraView,
 } from './cameras'
 import { buildSky, sunDirection, SKY, SUN } from './sky'
+import { disposeGrain, groundGrain, sharpenGrain } from './surfaceTexture'
 import { buildTrackMesh, trackBounds } from './trackMesh'
 import { buildTrackside } from './trackside'
 
@@ -145,7 +146,14 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
     // reflectance, which is this — much darker than it looks written down, and
     // the reason the old 0x23331d read as painted cardboard once the sun landed
     // on it.
-    new THREE.MeshStandardMaterial({ color: track ? 0x4a5535 : 0x1c2129, roughness: 1 }),
+    new THREE.MeshStandardMaterial({
+      color: track ? 0x4a5535 : 0x1c2129,
+      // The same grain as the road, tiled far coarser: this plane is hundreds of
+      // metres across, and at the road's tile size it would be a shimmer rather
+      // than a surface.
+      map: track ? groundGrain(bounds ? bounds.size : GRID_SIZE * 3) : null,
+      roughness: 1,
+    }),
   )
   ground.rotation.x = -Math.PI / 2
   // Below the run-off, so the terrain never z-fights the circuit it surrounds.
@@ -165,6 +173,11 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
     trackMesh.receiveShadow = true
     scene.add(trackMesh)
   }
+
+  // After the surfaces exist, and only here: the anisotropy limit is a driver
+  // capability, so the mesh builders cannot ask for it themselves without every
+  // one of them being handed a renderer.
+  if (track) sharpenGrain(renderer)
 
   // Barriers, boards, tyre stacks, the treeline and a grandstand. Only with a
   // circuit: the grid fallback is for looking at the car, and furniture around
@@ -344,6 +357,9 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
         trackMesh.geometry.dispose()
         ;(trackMesh.material as THREE.Material).dispose()
       }
+      ground.geometry.dispose()
+      ;(ground.material as THREE.Material).dispose()
+      disposeGrain()
       sky.geometry.dispose()
       ;(sky.material as THREE.Material).dispose()
       carMesh.dispose()
