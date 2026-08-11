@@ -43,11 +43,18 @@ TypeScript · Vite · Three.js · custom vehicle physics · no install, static d
 > **The shots.** Three cameras on **C**: a sprung chase that lags on purpose, the T-cam on
 > the roll hoop, and the halo cam at the driver's eyeline. The onboard pair are bolted to
 > the bodywork, so the horizon tilts when the car does, and both pick up a vibration that
-> scales with speed and with how rough what you are driving on is.
+> scales with speed, with how rough what you are driving on is, and with how hard you last
+> hit something.
 >
-> **Not there yet.** The barriers are scenery, not collision — you can still drive off into
-> the trees and back. No other cars, no flags, no sectors on screen. AI and race rules are
-> next; see [PLAN.md](PLAN.md).
+> **The walls.** The barriers are solid. They are tested at both axles rather than at the
+> centre of mass, so clipping one with the nose spins the car instead of stopping it square
+> — and they absorb rather than bounce, because a springy barrier is the fastest way to
+> make a game feel like a pinball table. Scraping along one scrubs your speed, the camera
+> takes the hit, and the wall is solved from the same number it is drawn from.
+>
+> **Not there yet.** No other cars, no flags, no sectors on screen, and hitting a barrier
+> costs you time but does not yet mark the car. AI and race rules are next; see
+> [PLAN.md](PLAN.md).
 
 Play it: **<https://thompgt.github.io/slipstream/>**
 
@@ -100,8 +107,9 @@ puts the tyre-grip curve directly under your fingers, which is where the handlin
 actually comes from. It began as a 2D bicycle model, which is still how the tyre forces are
 evaluated; vertical load is now solved per wheel, so anti-roll bars, roll centres and a
 lifted inside wheel already mean something. Per-wheel slip is the next step. The circuit
-reaches the physics as exactly two numbers — a grip multiplier and a drag multiplier — so
-the vehicle model still runs in Node with no track at all, which is what keeps it testable.
+reaches the physics as two numbers and a plane — a grip multiplier, a drag multiplier, and
+the face of whichever barrier the bodywork is currently inside — so the vehicle model still
+runs in Node with no track at all, which is what keeps it testable.
 
 ## Licence
 

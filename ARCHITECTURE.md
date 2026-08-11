@@ -169,6 +169,27 @@ The car reads the surface found under it at the end of the _previous_ step. Loca
 needs its new position, and the physics needs the surface before it moves — 16ms of lag at
 the moment two wheels cross a white line, which no driver can perceive.
 
+Barriers are the same idea and the one place that lag is not acceptable:
+
+```ts
+type WallQuery = (x: number, z: number, radius: number, out: WallContact) => boolean
+```
+
+`track/barriers.ts` reduces a wall that curves with the circuit to a plane — a depth and an
+outward normal — and `physics/collision.ts` resolves against it having never learned there
+is a circuit, which is what lets the whole thing be tested against a flat wall in Node.
+
+But the query is _passed into_ `stepCar` rather than written onto the car, and that is the
+difference that matters. A surface can be a step stale; a wall cannot. At 90m/s, 16ms of
+stale position is a metre and a half of bodywork already inside the barrier, and the version
+that resolves it next step pushes the car back out of a wall it was never seen to enter.
+
+The other half is that the wall's position is not computed twice. `track/layout.ts` owns the
+kerb width, the run-off width and the barrier line, and the road mesh, the surface query,
+the trackside furniture and the collision solver all measure from it. A barrier drawn from
+one constant and solved from another is a barrier you hit two metres early, and it looks
+like a bug in neither file.
+
 ---
 
 ## Where state lives
@@ -243,6 +264,8 @@ slipstream/
     │   ├── tyre.ts             # slip curve, load sensitivity, axle grip
     │   ├── suspension.ts       # vertical load per wheel, roll
     │   ├── gearbox.ts          # torque curve + shift logic
+    │   ├── collision.ts        # ← barriers: push out, absorb, scrub, spin
+    │   ├── collision.test.ts   # ← against a flat wall, not a circuit
     │   ├── regression.test.ts  # ← the frozen handling envelope
     │   ├── stability.test.ts   # ← it must never explode, and must be deterministic
     │   ├── surface.test.ts     # ← what grass and gravel each cost you
@@ -251,6 +274,9 @@ slipstream/
     │   ├── author.ts           # circuits as straights and arcs
     │   ├── spline.ts           # → evenly-sampled centreline
     │   ├── query.ts            # position → distance, offset, surface. O(1).
+    │   ├── layout.ts           # ← kerb, run-off and barrier widths. One place.
+    │   ├── barriers.ts         # → the wall as a plane physics/ can solve
+    │   ├── barriers.test.ts    # ← depth and normal, checked against a circle
     │   ├── track.test.ts
     │   └── circuits/monza.ts
     ├── input/
