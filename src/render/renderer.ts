@@ -18,13 +18,33 @@ import * as THREE from 'three'
 import { lerp, lerpAngle } from '../core/math'
 import type { World } from '../core/world'
 import type { TrackData } from '../track/spline'
+import { buildCarMesh, CAR } from './carMesh'
 import { cameraSetup, type CameraSetup } from './cameraSetup'
+import { approach, bodyAttitude, carMotion, wheelAngles } from './carMotion'
+import {
+  cameraPose,
+  cameraUp,
+  fovFor,
+  nextView,
+  rigFor,
+  shakeAmount,
+  shakeOffset,
+  type CameraRig,
+  type CameraView,
+} from './cameras'
+import { buildSky, sunDirection, SKY, SUN } from './sky'
+import { disposeGrain, groundGrain, sharpenGrain } from './surfaceTexture'
 import { buildTrackMesh, trackBounds } from './trackMesh'
+import { buildTrackside } from './trackside'
 
 export interface Renderer {
   /** @param alpha 0..1 interpolation between the previous and current physics state. */
   draw: (world: World, alpha: number) => void
   resize: () => void
+  /** Switch to the next broadcast camera and report which one it is. */
+  cycleView: () => CameraView
+  /** Which camera is live, for the overlay. */
+  view: () => CameraRig
   dispose: () => void
 }
 
@@ -38,6 +58,18 @@ const GRID_SIZE = 400
 const GRID_DIVISIONS = 80
 const GRID_SPACING = GRID_SIZE / GRID_DIVISIONS
 
+/**
+ * Half-width of the sun's shadow box, m.
+ *
+ * The one shadow map covers a square this size centred a little ahead of the
+ * car, and nothing outside it casts. 45m is about two car lengths behind and
+ * four ahead at the resolution below, which is everything the chase camera can
+ * actually see a shadow on. Widening it to cover the circuit would spread 2048
+ * texels over five kilometres and the car's own shadow would be a smudge.
+ */
+const SHADOW_EXTENT = 45
+const SHADOW_MAP_SIZE = 2048
+
 export function createRenderer(canvasParent: HTMLElement, options: RendererOptions = {}): Renderer {
   const { track } = options
   const tuning = options.tuning ?? cameraSetup
@@ -47,13 +79,24 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
   // Safari's WebGL driver is where the 60fps budget is tightest.
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   renderer.setSize(window.innerWidth, window.innerHeight)
+  // Filmic response instead of clipping to white. Sunlit carbon and a shadowed
+  // sidepod differ by a lot more than the 0..1 a linear pipeline can hold, and
+  // clamping that range is most of what makes untonemapped WebGL look like a
+  // toy — highlights go flat white and the midtones all crowd together.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 0.95
+  // One map, not a cascade: the perf budget in CLAUDE.md rules cascades out, and
+  // a single box that follows the car buys the thing that actually matters —
+  // the car sitting *on* the road rather than hovering over it.
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
   canvasParent.appendChild(renderer.domElement)
 
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color(0x0b0d10)
-  // Further with a circuit under you: braking references you cannot see until
-  // 240m out are references you brake too late for.
-  scene.fog = new THREE.Fog(0x0b0d10, 120, track ? 900 : 240)
+  // Fog is the horizon colour so the far end of the circuit dissolves into the
+  // sky rather than ending against it. Held well back: braking references you
+  // cannot see until 240m out are references you brake too late for.
+  scene.fog = new THREE.Fog(SKY.horizon, track ? 400 : 120, track ? 1500 : 240)
 
   // The far plane has to sit beyond the fog, or the circuit is clipped away
   // while still visible — a hard edge sweeping down the main straight.
@@ -61,13 +104,35 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
     tuning.baseFov,
     window.innerWidth / window.innerHeight,
     0.1,
-    track ? 1400 : 600,
+    track ? 2600 : 600,
   )
 
-  scene.add(new THREE.HemisphereLight(0x9fc4e8, 0x1b2029, 1.6))
-  const sun = new THREE.DirectionalLight(0xffffff, 1.4)
-  sun.position.set(30, 50, 20)
+  const sky = buildSky()
+  scene.add(sky)
+
+  // Sky bounce and ground bounce. Low, because it is fill: at the intensity the
+  // old rig used it washed out the sun entirely and every surface faced the
+  // same way, which is why nothing had a lit side and a dark side.
+  scene.add(new THREE.HemisphereLight(SKY.horizon, 0x4a4232, SUN.ambientIntensity))
+
+  const sun = new THREE.DirectionalLight(SUN.colour, SUN.intensity)
+  const sunOffset = sunDirection().multiplyScalar(120)
+  sun.position.copy(sunOffset)
+  sun.castShadow = true
+  sun.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE)
+  sun.shadow.camera.left = -SHADOW_EXTENT
+  sun.shadow.camera.right = SHADOW_EXTENT
+  sun.shadow.camera.top = SHADOW_EXTENT
+  sun.shadow.camera.bottom = -SHADOW_EXTENT
+  sun.shadow.camera.near = 1
+  sun.shadow.camera.far = 400
+  // Slope-scaled bias rather than a flat one: the road is very nearly
+  // perpendicular to nothing and a constant bias that stops acne on the flat
+  // detaches the shadow from the tyres.
+  sun.shadow.bias = -0.0002
+  sun.shadow.normalBias = 0.03
   scene.add(sun)
+  scene.add(sun.target)
 
   // Terrain: a plane that covers the whole circuit when there is one, or a
   // moving patch under the car when there is not.
@@ -77,12 +142,24 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
       bounds ? bounds.size : GRID_SIZE * 3,
       bounds ? bounds.size : GRID_SIZE * 3,
     ),
-    new THREE.MeshStandardMaterial({ color: track ? 0x23331d : 0x1c2129, roughness: 0.95 }),
+    // Real albedo, not a swatch: dry late-summer grass sits around 0.14-0.18
+    // reflectance, which is this — much darker than it looks written down, and
+    // the reason the old 0x23331d read as painted cardboard once the sun landed
+    // on it.
+    new THREE.MeshStandardMaterial({
+      color: track ? 0x4a5535 : 0x1c2129,
+      // The same grain as the road, tiled far coarser: this plane is hundreds of
+      // metres across, and at the road's tile size it would be a shimmer rather
+      // than a surface.
+      map: track ? groundGrain(bounds ? bounds.size : GRID_SIZE * 3) : null,
+      roughness: 1,
+    }),
   )
   ground.rotation.x = -Math.PI / 2
   // Below the run-off, so the terrain never z-fights the circuit it surrounds.
   ground.position.y = -0.15
   if (bounds) ground.position.set(bounds.centreX, -0.15, bounds.centreZ)
+  ground.receiveShadow = true
   scene.add(ground)
 
   const grid = new THREE.GridHelper(GRID_SIZE, GRID_DIVISIONS, 0x35414f, 0x252d38)
@@ -92,16 +169,59 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
   if (!track) scene.add(grid)
 
   const trackMesh = track ? buildTrackMesh(track) : null
-  if (trackMesh) scene.add(trackMesh)
+  if (trackMesh) {
+    trackMesh.receiveShadow = true
+    scene.add(trackMesh)
+  }
 
-  const car = buildCar()
+  // After the surfaces exist, and only here: the anisotropy limit is a driver
+  // capability, so the mesh builders cannot ask for it themselves without every
+  // one of them being handed a renderer.
+  if (track) sharpenGrain(renderer)
+
+  // Barriers, boards, tyre stacks, the treeline and a grandstand. Only with a
+  // circuit: the grid fallback is for looking at the car, and furniture around
+  // an empty plane would be furniture around nothing.
+  const trackside = track ? buildTrackside(track) : null
+  if (trackside) for (const object of trackside.objects) scene.add(object)
+
+  const carMesh = buildCarMesh()
+  const car = carMesh.group
+  car.traverse((object) => {
+    if (object instanceof THREE.Mesh) {
+      object.castShadow = true
+      // Bodywork shadows itself: the underside of the floor, the inside of the
+      // sidepods and the cockpit are all dark because something above them is
+      // in the way, and without this they are lit as if nothing were.
+      object.receiveShadow = true
+    }
+  })
   scene.add(car)
 
   // Camera state, render-side only. Starts behind the car's spawn pose.
   const cameraTarget = new THREE.Vector3()
   const lookTarget = new THREE.Vector3()
+  const cameraShake = new THREE.Vector3()
   let cameraInitialised = false
   let lastFrameTime = performance.now()
+
+  let view: CameraView = 'chase'
+  // Reused, not rebuilt each frame: a fresh object per frame at 60Hz is the GC
+  // pressure `World` is kept plain and mutable to avoid.
+  const carPose = { x: 0, z: 0, heading: 0, pitch: 0, roll: 0 }
+  /**
+   * Render clock, seconds. Drives the shake only.
+   *
+   * Accumulated from frame deltas rather than read off `world.time`, because the
+   * shake is cosmetic and must not be tied to the physics clock — and because
+   * `performance.now()` is a large number whose sines lose precision.
+   */
+  let elapsed = 0
+
+  // Body attitude, smoothed across frames rather than snapped to the solver's
+  // latest accelerations, which step visibly when a tyre lets go.
+  let pitch = 0
+  let roll = 0
 
   const resize = (): void => {
     camera.aspect = window.innerWidth / window.innerHeight
@@ -113,6 +233,13 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
     draw(world, alpha) {
       const player = world.cars[0]
       if (player) {
+        const now = performance.now()
+        // Render-side dt, clamped. Every smoothing and animation below is
+        // cosmetic and must not depend on the physics clock — the two run at
+        // different rates, and coupling them would put framerate into the sim.
+        const dt = Math.min((now - lastFrameTime) / 1000, 0.1)
+        lastFrameTime = now
+
         // Interpolate between the last two physics states rather than snapping to
         // the latest — steps and refreshes drift, and snapping reads as stutter.
         const x = lerp(player.previousPosition.x, player.position.x, alpha)
@@ -124,6 +251,31 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
         // which is exactly the forward vector the physics uses.
         car.rotation.y = heading
 
+        // Walk the shadow box along with the car, keeping the sun's direction
+        // fixed. Both the light and its target move by the same offset, so the
+        // shadows never swing as the car drives — only what is inside the box
+        // changes.
+        sun.target.position.set(x, 0, z)
+        sun.position.set(x + sunOffset.x, sunOffset.y, z + sunOffset.z)
+
+        // Steering, wheel rotation, and the body leaning on its springs. The
+        // wheels hang off the car group and the bodywork off `body`, so the
+        // attitude below leans the car without tilting the tyres off the road.
+        const telemetry = player.telemetry
+        const wheels = wheelAngles(player.input.steer, telemetry.speed, dt, {
+          front: CAR.frontTyreRadius,
+          rear: CAR.rearTyreRadius,
+        })
+        for (const steered of carMesh.steering) steered.rotation.y = wheels.steer
+        for (const [i, spin] of carMesh.spinning.entries()) {
+          spin.rotation.x += i < 2 ? wheels.frontSpin : wheels.rearSpin
+        }
+
+        const attitude = bodyAttitude(telemetry.longitudinalG, telemetry.lateralG)
+        pitch = approach(pitch, attitude.pitch, carMotion.attitudeStiffness, dt)
+        roll = approach(roll, attitude.roll, carMotion.attitudeStiffness, dt)
+        carMesh.body.rotation.set(pitch, 0, roll)
+
         if (!track) {
           // Snap the grid in whole squares so the reference lines never appear
           // to slide under the car, which would read as the car standing still.
@@ -133,44 +285,75 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
           ground.position.z = grid.position.z
         }
 
-        const cam = tuning
-        const forwardX = Math.sin(heading)
-        const forwardZ = Math.cos(heading)
+        const rig = rigFor(view, tuning)
+        // The onboard rigs ride the body, so they get the smoothed lean the
+        // bodywork is already using rather than the solver's raw accelerations.
+        carPose.x = x
+        carPose.z = z
+        carPose.heading = heading
+        carPose.pitch = pitch
+        carPose.roll = roll
+        cameraPose(rig, carPose, cameraTarget, lookTarget)
+        // Set before `lookAt`, which reads it to build the view matrix.
+        cameraUp(rig, carPose, camera.up)
 
-        cameraTarget.set(x - forwardX * cam.distance, cam.height, z - forwardZ * cam.distance)
-        lookTarget.set(x + forwardX * cam.lookAhead, 0.8, z + forwardZ * cam.lookAhead)
+        const speed = Math.hypot(player.velocity.x, player.velocity.z)
 
-        const now = performance.now()
-        // Render-side dt, clamped. This smoothing is cosmetic and must not
-        // depend on the physics clock — the two run at different rates.
-        const dt = Math.min((now - lastFrameTime) / 1000, 0.1)
-        lastFrameTime = now
-
-        if (!cameraInitialised) {
+        if (!cameraInitialised || rig.stiffness === null) {
+          // Bolted to the car: no spring, or the shot slides around inside the
+          // tub. Also the first frame of any view, so switching cameras cuts
+          // rather than sweeping across the circuit.
           camera.position.copy(cameraTarget)
           cameraInitialised = true
         } else {
           // Exponential smoothing, framerate-independent. The lag is the point:
           // a rigidly-attached camera reads as "no speed" and gets misdiagnosed
           // as a physics problem (PLAN.md, M1).
-          const t = 1 - Math.exp(-cam.stiffness * dt)
+          const t = 1 - Math.exp(-rig.stiffness * dt)
           camera.position.lerp(cameraTarget, t)
         }
+
+        // Vibration from what is under the tyres, added *after* the spring: a
+        // 6/s spring is a low-pass filter, and a 6Hz wobble fed through it as a
+        // target comes out the far side as almost nothing. Eye and look-at move
+        // together, so the camera is shaken rather than aimed somewhere else —
+        // repointing it at 60Hz reads as a fault, not as a kerb.
+        elapsed += dt
+        shakeOffset(
+          shakeAmount(rig, speed, player.surface.grip, player.impact),
+          elapsed,
+          cameraShake,
+        )
+        camera.position.add(cameraShake)
+        lookTarget.add(cameraShake)
+
         camera.lookAt(lookTarget)
 
         // FOV widens with speed. Cheap, and it does more for the sensation of
         // pace than any amount of extra geometry.
-        const speed = Math.hypot(player.velocity.x, player.velocity.z)
-        const fov = cam.baseFov + cam.fovGain * Math.min(speed / cam.fovSpeed, 1)
+        const fov = fovFor(rig, speed)
         if (Math.abs(camera.fov - fov) > 0.01) {
           camera.fov = fov
           camera.updateProjectionMatrix()
         }
       }
 
+      // The dome rides the camera, so it is always the same distance away and
+      // can never be driven out of. Done after the camera has been moved for
+      // this frame, or the sky lags the view by one frame at the horizon.
+      sky.position.copy(camera.position)
+
       renderer.render(scene, camera)
     },
     resize,
+    cycleView() {
+      view = nextView(view)
+      // Cut, don't sweep: letting the chase spring travel from the roll hoop to
+      // nine metres behind the car turns a camera change into a fly-by.
+      cameraInitialised = false
+      return view
+    },
+    view: () => rigFor(view, tuning),
     dispose() {
       // The circuit is the one large allocation here — a few megabytes of
       // buffers that the GPU keeps until it is told otherwise.
@@ -178,55 +361,15 @@ export function createRenderer(canvasParent: HTMLElement, options: RendererOptio
         trackMesh.geometry.dispose()
         ;(trackMesh.material as THREE.Material).dispose()
       }
+      ground.geometry.dispose()
+      ;(ground.material as THREE.Material).dispose()
+      disposeGrain()
+      sky.geometry.dispose()
+      ;(sky.material as THREE.Material).dispose()
+      carMesh.dispose()
+      trackside?.dispose()
       renderer.dispose()
       renderer.domElement.remove()
     },
   }
-}
-
-/**
- * A crude open-wheeler silhouette. Five boxes, one draw call each — well inside
- * the 150-call budget, and enough shape to read yaw at a glance, which is all a
- * placeholder needs to do.
- */
-function buildCar(): THREE.Group {
-  const group = new THREE.Group()
-
-  const bodyMaterial = new THREE.MeshStandardMaterial({
-    color: 0xe23636,
-    roughness: 0.35,
-    metalness: 0.15,
-  })
-  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x15181d, roughness: 0.8 })
-
-  const tub = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 3.6), bodyMaterial)
-  tub.position.y = 0.45
-  group.add(tub)
-
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.3, 1.6), bodyMaterial)
-  nose.position.set(0, 0.35, 2.4)
-  group.add(nose)
-
-  const frontWing = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.12, 0.5), darkMaterial)
-  frontWing.position.set(0, 0.18, 3.05)
-  group.add(frontWing)
-
-  const rearWing = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.45, 0.25), darkMaterial)
-  rearWing.position.set(0, 1.0, -1.9)
-  group.add(rearWing)
-
-  const wheelGeometry = new THREE.CylinderGeometry(0.36, 0.36, 0.38, 14)
-  wheelGeometry.rotateZ(Math.PI / 2)
-  for (const [x, z] of [
-    [-0.85, 1.6],
-    [0.85, 1.6],
-    [-0.85, -1.5],
-    [0.85, -1.5],
-  ] as const) {
-    const wheel = new THREE.Mesh(wheelGeometry, darkMaterial)
-    wheel.position.set(x, 0.36, z)
-    group.add(wheel)
-  }
-
-  return group
 }

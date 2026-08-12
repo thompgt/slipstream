@@ -22,12 +22,10 @@
  */
 
 import * as THREE from 'three'
+import { KERB_WIDTH, RUNOFF_WIDTH } from '../track/layout'
 import type { SurfaceType, TrackData, TrackSample } from '../track/spline'
+import { surfaceGrain, TILE_METRES } from './surfaceTexture'
 
-/** Width of the kerb strip outside the white line, m. Matches `track/query`. */
-const KERB_WIDTH = 1.2
-/** How far the graded run-off extends beyond the kerb, m. */
-const RUNOFF_WIDTH = 14
 /** Painted line width, m. */
 const LINE_WIDTH = 0.15
 /** Length of one red or white kerb block, m. */
@@ -134,16 +132,45 @@ export function buildTrackMesh(track: TrackData): THREE.Mesh {
   const samples = track.samples
   const count = samples.length
 
-  const positions = new Float32Array(count * VERTICES_PER_SAMPLE * 3)
-  const colours = new Float32Array(count * VERTICES_PER_SAMPLE * 3)
+  /**
+   * One more row of vertices than there are samples.
+   *
+   * The circuit closes, and the obvious way to close it is to index the last
+   * segment back to row zero. That works for position and colour, which are
+   * identical at both ends — and breaks the grain UV, which is not: v runs from
+   * zero to a few hundred and the wrap segment would interpolate all of it
+   * backwards inside a single two-metre quad, painting a compressed smear of the
+   * whole texture across the start line. The duplicate row costs fourteen
+   * vertices and no triangles.
+   */
+  const rows = count + 1
+
+  const positions = new Float32Array(rows * VERTICES_PER_SAMPLE * 3)
+  const colours = new Float32Array(rows * VERTICES_PER_SAMPLE * 3)
+  // Grain UVs, in tiles. Laid out in real metres — lateral offset across,
+  // distance along the lap up — rather than per-band, so the aggregate runs
+  // continuously across the white line instead of restarting at every edge.
+  const uvs = new Float32Array(rows * VERTICES_PER_SAMPLE * 2)
   // The loop closes, so there are exactly as many segments as samples.
   const indices = new Uint32Array(count * BANDS * 6)
 
   const bands: Band[] = []
   const colour = new THREE.Color()
 
-  for (let i = 0; i < count; i++) {
-    const sample = samples[i]!
+  // Stretch the tile very slightly so a whole number of them fits the lap. The
+  // circuit closes, so a v of `distance / TILE_METRES` jumps from 1300-and-a-bit
+  // back to zero across the start line and leaves one squeezed band of texture
+  // right where every lap begins. A percent of scale is invisible; the seam is
+  // not.
+  const tilesPerLap = Math.max(1, Math.round(track.length / TILE_METRES))
+  const tileAlong = track.length / tilesPerLap
+
+  for (let i = 0; i < rows; i++) {
+    // The closing row is sample zero again, so position, colour and the kerb
+    // block pattern all come from there; only how far round the lap it is
+    // differs, and that is the whole reason the row exists.
+    const sample = samples[i % count]!
+    const along = i === count ? track.length : sample.distance
     // Right of the direction of travel, matching `pointAt` in `track/spline`.
     const rightX = Math.cos(sample.heading)
     const rightZ = -Math.sin(sample.heading)
@@ -151,7 +178,7 @@ export function buildTrackMesh(track: TrackData): THREE.Mesh {
     // drops. Zero everywhere on Monza; free to be right about anyway.
     const tilt = Math.sin(sample.banking)
 
-    bandsAt(sample, i === 0 || i === count - 1, bands)
+    bandsAt(sample, i === 0 || i >= count - 1, bands)
 
     for (let b = 0; b < BANDS; b++) {
       const band = bands[b]!
@@ -168,12 +195,17 @@ export function buildTrackMesh(track: TrackData): THREE.Mesh {
         colours[vertex] = colour.r
         colours[vertex + 1] = colour.g
         colours[vertex + 2] = colour.b
+
+        const uv = (i * VERTICES_PER_SAMPLE + b * 2 + edge) * 2
+        uvs[uv] = lateral / TILE_METRES
+        uvs[uv + 1] = along / tileAlong
       }
     }
   }
 
   for (let i = 0; i < count; i++) {
-    const next = (i + 1) % count
+    // No modulo: `rows` already carries the duplicate that closes the lap.
+    const next = i + 1
     for (let b = 0; b < BANDS; b++) {
       const leftHere = i * VERTICES_PER_SAMPLE + b * 2
       const rightHere = leftHere + 1
@@ -195,12 +227,20 @@ export function buildTrackMesh(track: TrackData): THREE.Mesh {
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
   geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3))
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
   geometry.setIndex(new THREE.BufferAttribute(indices, 1))
   geometry.computeVertexNormals()
 
+  const grain = surfaceGrain()
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
-    roughness: 0.92,
+    // Multiplies the band colours rather than replacing them: kerbs stay red and
+    // white and the lines stay painted, they just stop being flat.
+    map: grain,
+    // The same map on roughness, so the aggregate catches the sun unevenly.
+    // Tarmac that reflects perfectly uniformly is tarmac that looks like felt.
+    roughnessMap: grain,
+    roughness: 0.98,
     metalness: 0,
   })
 

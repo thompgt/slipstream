@@ -31,8 +31,34 @@ describe('buildTrackMesh', () => {
   it('closes the ribbon back onto itself', () => {
     // One segment per sample, not one fewer: the last joins the first, and a
     // circuit with a missing segment has a hole you only see from one angle.
-    expect(position.count).toBe(track.samples.length * 14)
+    // One row of vertices more than there are samples, because that last
+    // segment ends on a duplicate of row zero rather than on row zero itself —
+    // same place, different distance along the lap, which is what keeps the
+    // grain from unwinding across the start line.
+    expect(position.count).toBe((track.samples.length + 1) * 14)
     expect(index.count).toBe(track.samples.length * 7 * 6)
+  })
+
+  it('ends the closing row exactly where it started', () => {
+    const first = 0
+    const closing = track.samples.length * 14
+    for (let v = 0; v < 14; v++) {
+      expect(position.getX(closing + v)).toBeCloseTo(position.getX(first + v))
+      expect(position.getY(closing + v)).toBeCloseTo(position.getY(first + v))
+      expect(position.getZ(closing + v)).toBeCloseTo(position.getZ(first + v))
+    }
+  })
+
+  it('runs the grain forwards over a whole number of tiles', () => {
+    const uv = mesh.geometry.getAttribute('uv')
+    // v must increase monotonically along the lap and land on an integer at the
+    // close, or the texture is discontinuous where every lap begins.
+    for (let row = 1; row <= track.samples.length; row++) {
+      expect(uv.getY(row * 14)).toBeGreaterThan(uv.getY((row - 1) * 14))
+    }
+    const total = uv.getY(track.samples.length * 14)
+    expect(total).toBeCloseTo(Math.round(total))
+    expect(total).toBeGreaterThan(1)
   })
 
   it('winds every triangle face-up', () => {

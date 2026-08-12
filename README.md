@@ -29,8 +29,32 @@ TypeScript · Vite · Three.js · custom vehicle physics · no install, static d
 > you are credited with, and the grip under your tyres — so running wide onto the grass
 > costs you the car, and putting it in the gravel costs you the lap.
 >
-> **Not there yet.** No barriers — you can drive off into the scenery and back. No other
-> cars, no flags, no sectors on screen. AI and race rules are next; see [PLAN.md](PLAN.md).
+> **The look.** ACES-tone-mapped, lit by a sun at a real time of day with soft shadows
+> under the car. The car itself is built to 2026 regulations — 5.6m long, 2.0m wide, 0.97m
+> tall on 18-inch wheels — with lofted bodywork, cambered wings, a halo and wishbones at
+> each corner. Barriers, sponsor boards, tyre stacks, marshal posts and the Monza treeline
+> are generated from the same sample table as the road, because an empty ribbon of tarmac
+> reads as slow however fast you are actually going.
+>
+> The tarmac is grained by a procedural noise map shared with the terrain, tiled to a
+> whole number of laps so there is no seam at the line — flat vertex colour is one draw
+> call and it is also why the road used to read as painted card.
+>
+> **The shots.** Three cameras on **C**: a sprung chase that lags on purpose, the T-cam on
+> the roll hoop, and the halo cam at the driver's eyeline. The onboard pair are bolted to
+> the bodywork, so the horizon tilts when the car does, and both pick up a vibration that
+> scales with speed, with how rough what you are driving on is, and with how hard you last
+> hit something.
+>
+> **The walls.** The barriers are solid. They are tested at both axles rather than at the
+> centre of mass, so clipping one with the nose spins the car instead of stopping it square
+> — and they absorb rather than bounce, because a springy barrier is the fastest way to
+> make a game feel like a pinball table. Scraping along one scrubs your speed, the camera
+> takes the hit, and the wall is solved from the same number it is drawn from.
+>
+> **Not there yet.** No other cars, no flags, no sectors on screen, and hitting a barrier
+> costs you time but does not yet mark the car. AI and race rules are next; see
+> [PLAN.md](PLAN.md).
 
 Play it: **<https://thompgt.github.io/slipstream/>**
 
@@ -43,7 +67,9 @@ npm run dev
 
 Then open the printed URL. You start on the line at Monza, pointing up the main straight.
 Drive with **WASD** or the **arrow keys**, **space** for the handbrake, or plug in a
-gamepad. **`** toggles the telemetry overlay — lap, current, last and best, plus how far
+gamepad. **C** cycles the cameras — chase, the T-cam on the roll hoop, and the halo cam at
+the driver's eyeline; the two onboard shots lean with the car and pick up the kerbs.
+**`** toggles the telemetry overlay — lap, current, last and best, plus how far
 round you are and what you are standing on. **R** puts you back on the line, and **T**
 opens the live tuning panel, where every slider changes the car on the next physics step.
 
@@ -81,8 +107,9 @@ puts the tyre-grip curve directly under your fingers, which is where the handlin
 actually comes from. It began as a 2D bicycle model, which is still how the tyre forces are
 evaluated; vertical load is now solved per wheel, so anti-roll bars, roll centres and a
 lifted inside wheel already mean something. Per-wheel slip is the next step. The circuit
-reaches the physics as exactly two numbers — a grip multiplier and a drag multiplier — so
-the vehicle model still runs in Node with no track at all, which is what keeps it testable.
+reaches the physics as two numbers and a plane — a grip multiplier, a drag multiplier, and
+the face of whichever barrier the bodywork is currently inside — so the vehicle model still
+runs in Node with no track at all, which is what keeps it testable.
 
 ## Licence
 

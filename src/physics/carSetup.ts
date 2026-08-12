@@ -101,6 +101,14 @@ export interface CarSetup {
     yawInertia: number
     /** Front axle to rear axle, m. */
     wheelbase: number
+    /**
+     * Overall bodywork width, m — 2026 regulations put it at 2.0.
+     *
+     * The tyre model never sees this; a bicycle model has no width. It exists
+     * because the barriers stop the bodywork rather than the centreline, so the
+     * collision solver needs to know how far the car sticks out sideways.
+     */
+    width: number
     /** Fraction of static weight on the front axle. */
     frontWeightBias: number
     /** Centre of gravity height, m. Drives how much load transfers. */
@@ -199,6 +207,7 @@ export const carSetup: CarSetup = {
     mass: 740,
     yawInertia: 900,
     wheelbase: 3.6,
+    width: 2.0,
     frontWeightBias: 0.45,
     cgHeight: 0.3,
     wheelRadius: 0.33,

@@ -49,6 +49,41 @@ export interface SurfaceContact {
 export const createSurfaceContact = (): SurfaceContact => ({ grip: 1, drag: 1 })
 
 /**
+ * A point of bodywork found inside a barrier, reduced to what a collision solver
+ * needs: how far in, and which way is out.
+ *
+ * Declared here for the same reason `SurfaceContact` is. `track/` knows the wall
+ * follows the road out past the run-off and curves with it; `physics/` only ever
+ * needs a plane. Reducing it here means the collision solver has no notion of a
+ * circuit and still runs in Node against a flat test wall.
+ */
+export interface WallContact {
+  /** Metres of overlap between the probe disc and the barrier. Never negative. */
+  depth: number
+  /** Unit normal pointing back out of the wall, toward the road. */
+  normalX: number
+  normalZ: number
+}
+
+export const createWallContact = (): WallContact => ({ depth: 0, normalX: 0, normalZ: 1 })
+
+/**
+ * Ask whether a disc of radius `radius` at this world point overlaps a barrier.
+ *
+ * A radius rather than a bare point because the barrier stops the bodywork, and
+ * the caller is the only one that knows how wide the car is. Answering for a
+ * point and letting the physics add its own half-width does not work: the query
+ * would have to report every point that is merely *near* a wall, and "near"
+ * would be a number `track/` had no basis to pick.
+ *
+ * Returns false and leaves `out` alone when it is clear, so the common case —
+ * every car, almost every step — writes nothing. `physics/stepCar` takes one of
+ * these optionally: with no query the car drives in an empty plane, which is
+ * exactly what the physics tests want.
+ */
+export type WallQuery = (x: number, z: number, radius: number, out: WallContact) => boolean
+
+/**
  * Read-only-by-convention diagnostics, refreshed every physics step.
  *
  * Written by `physics/`, read by `ui/`. It lives on the car rather than being
@@ -153,6 +188,20 @@ export interface Car {
    */
   surface: SurfaceContact
 
+  /**
+   * How hard the car last hit something, in m/s of closing speed, decaying to
+   * zero over about a second.
+   *
+   * A decaying scalar rather than an event because the things that read it are
+   * frame-based and an event is easy to miss: `render/` shakes the camera by it
+   * every frame, and audio and damage will want the same number. The peak is
+   * kept rather than the latest, so scraping a wall for half a second does not
+   * read as gentler than the moment you arrived at it.
+   *
+   * Written by `physics/`; nothing else may write it.
+   */
+  impact: number
+
   telemetry: CarTelemetry
 
   lap: number
@@ -177,6 +226,7 @@ export function createCar(id: number, isPlayer = false): Car {
     longitudinalAccel: 0,
     lateralAccel: 0,
     surface: createSurfaceContact(),
+    impact: 0,
     telemetry: createTelemetry(),
     lap: 0,
     distanceAlongTrack: 0,

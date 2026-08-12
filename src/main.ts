@@ -14,6 +14,7 @@ import { createInputSampler } from './input'
 import { resetCar, stepCar } from './physics/car'
 import { carSetup } from './physics/carSetup'
 import { peakSlipAngle } from './physics/tyre'
+import { createWallQuery } from './track/barriers'
 import { monza } from './track/circuits/monza'
 import { buildTrackIndex } from './track/query'
 import { cameraSetup } from './render/cameraSetup'
@@ -33,7 +34,11 @@ world.cars.push(player)
 // type that lives in `track/`, and passing it here costs one line while keeping
 // the module table honest. See ARCHITECTURE.md.
 const track = monza()
-const race = createRaceDirector(buildTrackIndex(track))
+const trackIndex = buildTrackIndex(track)
+const race = createRaceDirector(trackIndex)
+// The barriers stop being scenery. Handed to the physics rather than read off
+// the car, because a wall cannot tolerate a step of lag — see `stepCar`.
+const walls = createWallQuery(trackIndex)
 
 const input = createInputSampler(window)
 const renderer = createRenderer(document.body, { track })
@@ -53,7 +58,7 @@ const loop = createLoop({
   step(dt) {
     const speed = Math.hypot(player.velocity.x, player.velocity.z)
     player.input = input.sample(dt / 1000, speed)
-    stepCar(player, dt, carSetup)
+    stepCar(player, dt, carSetup, walls)
     world.time += dt
     // After the car has moved, and before the next step reads the surface it
     // ended up on: laps, standings, and what is under the wheels.
@@ -88,6 +93,7 @@ const loop = createLoop({
     overlay.set('g long/lat', `${t.longitudinalG.toFixed(2)} / ${t.lateralG.toFixed(2)}`)
     overlay.set('downforce', `${(t.downforce / 1000).toFixed(1)} kN`)
     overlay.set('input', input.usingGamepad ? 'gamepad' : 'keyboard')
+    overlay.set('camera', `${renderer.view().label}   (C)`)
 
     const timing = race.timing(player.id)
     const where = race.positionOf(player.id)
@@ -142,6 +148,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Backquote') overlay.toggle()
   if (e.code === 'KeyR') restart()
   if (e.code === 'KeyT') toggleTuningPanel()
+  if (e.code === 'KeyC') renderer.cycleView()
 })
 
 // A known pose before the first frame is drawn. Deliberately no priming
