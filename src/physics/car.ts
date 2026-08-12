@@ -26,9 +26,10 @@
  */
 
 import { clamp } from '../core/math'
-import { createTelemetry, type Car, type WallQuery } from '../core/world'
+import { createDamage, createTelemetry, type Car, type WallQuery } from '../core/world'
 import { carSetup, type CarSetup } from './carSetup'
 import { resolveWalls } from './collision'
+import { createAeroState, damagedAero } from './damage'
 import { engineTorque, totalRatio, updateGearbox } from './gearbox'
 import { createWheelLoads, FL, FR, RL, RR, wheelLoads, type AxleLoads } from './suspension'
 import { axleGrip, tyreForce } from './tyre'
@@ -36,6 +37,7 @@ import { axleGrip, tyreForce } from './tyre'
 /** Scratch, reused every step for every car — see the note in `suspension`. */
 const wheels = createWheelLoads()
 const loads: AxleLoads = { front: 0, rear: 0 }
+const aeroNow = createAeroState()
 
 /**
  * Advance one car by exactly `dt` ms.
@@ -63,7 +65,13 @@ export function stepCar(
   car.previousHeading = car.heading
 
   const s = dt / 1000
-  const { chassis, engine, gearbox, brakes, tyres, aero, steering } = setup
+  const { chassis, engine, gearbox, brakes, tyres, steering } = setup
+
+  // Not `setup.aero`: once the car has hit something, the wings it left the
+  // garage with are not the wings it has. Everything downstream — load transfer,
+  // drag, the downforce figure on the overlay — reads this instead, so damage
+  // reaches the tyres by the same path a setup change does.
+  const aero = damagedAero(setup, car.damage, aeroNow)
 
   // CG to each axle. Front load bias of 0.45 means the CG sits 0.45 of the
   // wheelbase ahead of the rear axle — closer to the rear, as it should be.
@@ -110,7 +118,7 @@ export function stepCar(
   // because lateral transfer is antisymmetric within an axle — so this step
   // changes nothing today. It is the scaffolding the per-wheel tyre model needs,
   // and doing it first means the migration can be verified rather than felt.
-  wheelLoads(car.longitudinalAccel, car.lateralAccel, speed, setup, wheels)
+  wheelLoads(car.longitudinalAccel, car.lateralAccel, speed, setup, wheels, aero)
   loads.front = wheels[FL] + wheels[FR]
   loads.rear = wheels[RL] + wheels[RR]
 
@@ -286,6 +294,10 @@ export function resetCar(car: Car): void {
   car.surface.drag = 1
   // Otherwise R out of a barrier and the camera keeps shaking on the start line.
   car.impact = 0
+  // R is a new car, not a repaired one. Carrying damage through a reset would
+  // make the button that exists to recover from a shunt the one thing that
+  // cannot recover from a shunt.
+  Object.assign(car.damage, createDamage())
   // Off the hot path — only a NaN or a keypress gets here — so rebuilding from
   // the factory is worth it to keep this from drifting as fields are added.
   Object.assign(car.telemetry, createTelemetry())

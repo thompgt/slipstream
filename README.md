@@ -52,9 +52,15 @@ TypeScript · Vite · Three.js · custom vehicle physics · no install, static d
 > make a game feel like a pinball table. Scraping along one scrubs your speed, the camera
 > takes the hit, and the wall is solved from the same number it is drawn from.
 >
-> **Not there yet.** No other cars, no flags, no sectors on screen, and hitting a barrier
-> costs you time but does not yet mark the car. AI and race rules are next; see
-> [PLAN.md](PLAN.md).
+> **The damage.** Hitting something takes the car apart, and it costs you the car rather
+> than a second a lap. Structures break on energy, so the harm goes as the square of
+> closing speed; a square hit tears at a wing and a scrape drags down the floor. What is
+> left is not a slower car but an unbalanced one — lose the front wing and it understeers
+> into everything while still doing 320 down the straight, lose the rear wing and it is
+> *quicker* on the straight and terrifying at Ascari.
+>
+> **Not there yet.** No other cars, no flags, no sectors on screen, and the damage is
+> under the bodywork rather than on it. AI and race rules are next; see [PLAN.md](PLAN.md).
 
 Play it: **<https://thompgt.github.io/slipstream/>**
 

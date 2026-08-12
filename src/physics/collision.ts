@@ -31,6 +31,7 @@
 import { clamp } from '../core/math'
 import type { Car, WallContact, WallQuery } from '../core/world'
 import { carSetup, type CarSetup } from './carSetup'
+import { applyImpact } from './damage'
 
 /**
  * Fraction of closing speed returned by the barrier.
@@ -176,6 +177,14 @@ export function resolveWalls(
     // without a bound a fast enough clip hands the car a yaw rate no amount of
     // damping recovers from within the same second.
     car.yawRate = clamp(car.yawRate + moment, -MAX_YAW_RATE, MAX_YAW_RATE)
+
+    // --- damage -----------------------------------------------------------------
+    // The normal's forward component in the body frame says how square the hit
+    // was, which is the difference between a wing torn off and a floor dragged
+    // down a barrier. It is the same decomposition as `acrossCar` above, one
+    // axis over, so the collision solve already knows everything damage needs.
+    const alongCar = normalX * sinH + normalZ * cosH
+    applyImpact(car.damage, closing, arm > 0, Math.abs(alongCar))
   }
 
   if (hardest > IMPACT_FLOOR && hardest > car.impact) car.impact = hardest

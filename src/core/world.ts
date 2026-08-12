@@ -84,6 +84,29 @@ export const createWallContact = (): WallContact => ({ depth: 0, normalX: 0, nor
 export type WallQuery = (x: number, z: number, radius: number, out: WallContact) => boolean
 
 /**
+ * How broken each part of the car is: 0 is factory-fresh, 1 is gone.
+ *
+ * Only the parts whose loss the vehicle model can actually express are listed.
+ * A bicycle model has no suspension travel and no wheels to lose, so a
+ * `wishbone` field here would be a number nothing could read — and damage that
+ * changes nothing is the forgiving-damage-model CLAUDE.md is written against.
+ * The three here all land on aerodynamics, which is the one thing a 2D model
+ * with per-axle load *can* feel properly.
+ *
+ * Declared in `core/` for the usual reason: `render/` has to draw a bent wing
+ * and `ui/` has to display it, and neither may import `physics/`.
+ *
+ * Monotonic. Nothing repairs a car mid-session except a reset.
+ */
+export interface CarDamage {
+  frontWing: number
+  rearWing: number
+  floor: number
+}
+
+export const createDamage = (): CarDamage => ({ frontWing: 0, rearWing: 0, floor: 0 })
+
+/**
  * Read-only-by-convention diagnostics, refreshed every physics step.
  *
  * Written by `physics/`, read by `ui/`. It lives on the car rather than being
@@ -202,6 +225,15 @@ export interface Car {
    */
   impact: number
 
+  /**
+   * What the barriers have taken off the car so far.
+   *
+   * Written by `physics/` only, and never downward — the one thing that clears
+   * it is `resetCar`. Read by `physics/` itself for aerodynamics, by `render/`
+   * to bend the bodywork, and by `ui/` to show it.
+   */
+  damage: CarDamage
+
   telemetry: CarTelemetry
 
   lap: number
@@ -227,6 +259,7 @@ export function createCar(id: number, isPlayer = false): Car {
     lateralAccel: 0,
     surface: createSurfaceContact(),
     impact: 0,
+    damage: createDamage(),
     telemetry: createTelemetry(),
     lap: 0,
     distanceAlongTrack: 0,

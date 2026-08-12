@@ -52,6 +52,19 @@ export interface AxleLoads {
 }
 
 /**
+ * The only part of the aerodynamics this file needs: how much downforce there
+ * is and where it acts.
+ *
+ * Structural rather than an import of `damage.AeroState`, so that both the
+ * pristine `setup.aero` and the damaged one satisfy it without this module
+ * knowing that damage exists.
+ */
+export interface AeroSurfaces {
+  downforce: number
+  balanceFront: number
+}
+
+/**
  * Roll stiffness of one axle, Nm/rad: its bar plus what its springs already
  * contribute. Two springs a track width apart resist roll with `k·t²/2`.
  */
@@ -106,6 +119,10 @@ export function rollAngle(lateralAccel: number, setup: CarSetup): number {
  * @param lateralAccel m/s^2 rightward. Load transfers *away* from the direction
  *   of acceleration, so a right-hand corner loads the left-hand wheels.
  * @param speed m/s, for downforce.
+ * @param aero The aerodynamics the car actually has right now, which is not
+ *   `setup.aero` once it has hit something — see `damage.damagedAero`. Passed in
+ *   rather than read off the setup so this file needs no notion of damage, and
+ *   defaulted so every test that does not care can ignore it.
  * @param out Mutated and returned. Called for every car every step; allocating
  *   here is measurable GC pressure at 60Hz.
  */
@@ -115,8 +132,9 @@ export function wheelLoads(
   speed: number,
   setup: CarSetup,
   out: WheelLoads = createWheelLoads(),
+  aero: AeroSurfaces = setup.aero,
 ): WheelLoads {
-  const { chassis, aero, suspension } = setup
+  const { chassis, suspension } = setup
 
   const weight = chassis.mass * GRAVITY
   const staticFront = weight * chassis.frontWeightBias
